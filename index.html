@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Математика 3 класс — Тренажёр</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>🧮 Математика 3 класс</h1>
+      <div class="stats">
+        <span>⭐ Очки: <b id="score">0</b></span>
+        <span>🔥 Серия: <b id="streak">0</b></span>
+      </div>
+    </header>
+
+    <!-- Экран выбора режима -->
+    <section id="menu" class="screen active">
+      <h2>Выбери режим</h2>
+      <div class="modes">
+        <button class="mode-btn" data-mode="multiply">
+          <span class="icon">✖️</span>
+          <span class="title">Таблица умножения</span>
+          <span class="desc">Учимся умножать и делить</span>
+        </button>
+        <button class="mode-btn" data-mode="hundreds">
+          <span class="icon">➕</span>
+          <span class="title">Счёт до 1000</span>
+          <span class="desc">Сложение и вычитание</span>
+        </button>
+        <button class="mode-btn" data-mode="logic">
+          <span class="icon">🧠</span>
+          <span class="title">Задачи на логику</span>
+          <span class="desc">Думаем и рассуждаем</span>
+        </button>
+      </div>
+      <button id="reset-btn" class="link-btn">Сбросить прогресс</button>
+    </section>
+
+    <!-- Экран игры -->
+    <section id="game" class="screen">
+      <button id="back-btn" class="link-btn">← Назад</button>
+      <div class="question-box">
+        <p id="question">2 × 7 = ?</p>
+      </div>
+      <div id="answers" class="answers"></div>
+      <div id="feedback" class="feedback"></div>
+    </section>
+
+    <!-- Экран результата -->
+    <section id="result" class="screen">
+      <h2 id="result-title">Молодец!</h2>
+      <p id="result-text"></p>
+      <button id="again-btn" class="primary-btn">Играть снова</button>
+      <button id="menu-btn" class="link-btn">В меню</button>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
