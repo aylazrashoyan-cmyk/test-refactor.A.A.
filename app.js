@@ -1,5 +1,5 @@
 // ==========================================
-// 1. UI КОМПОНЕНТЫ
+// 1. UI
 // ==========================================
 const Icons = {
   home: `<svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
@@ -21,49 +21,36 @@ const UI = {
     const root = document.getElementById('modal-root');
     root.innerHTML = `<div class="modal-content">${html}</div>`;
     root.classList.add('open');
-    return root.querySelector('.modal-content');
   },
   closeModal: () => document.getElementById('modal-root').classList.remove('open')
 };
 
 // ==========================================
-// 2. БАЗА ДАННЫХ
+// 2. DB (IndexedDB)
 // ==========================================
 const DB = {
-  dbName: 'analitik_flow_db', storeName: 'data_store', data: null,
+  dbName: 'analitik_v3', storeName: 'data', data: null,
   async init() {
     return new Promise((resolve) => {
       const req = indexedDB.open(this.dbName, 1);
       req.onupgradeneeded = (e) => e.target.result.createObjectStore(this.storeName);
       req.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(this.storeName, 'readonly');
-        const getReq = tx.objectStore(this.storeName).get('current_data');
-        getReq.onsuccess = () => { this.data = getReq.result || null; resolve(); };
-        getReq.onerror = () => resolve();
+        const tx = e.target.result.transaction(this.storeName, 'readonly');
+        const getReq = tx.objectStore(this.storeName).get('state');
+        getReq.onsuccess = () => { 
+          this.data = getReq.result || { imports: [], rails: [], links: [], plans: {} }; 
+          resolve(); 
+        };
       };
       req.onerror = () => resolve();
     });
   },
-  async save(data) {
-    this.data = data;
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.dbName, 1);
-      req.onsuccess = (e) => {
-        const tx = e.target.result.transaction(this.storeName, 'readwrite');
-        tx.objectStore(this.storeName).put(data, 'current_data');
-        tx.oncomplete = () => resolve();
-        tx.onerror = (err) => reject(err);
-      };
-    });
-  },
-  async clear() {
-    this.data = null;
+  async save() {
     return new Promise((resolve) => {
       const req = indexedDB.open(this.dbName, 1);
       req.onsuccess = (e) => {
         const tx = e.target.result.transaction(this.storeName, 'readwrite');
-        tx.objectStore(this.storeName).delete('current_data');
+        tx.objectStore(this.storeName).put(this.data, 'state');
         tx.oncomplete = () => resolve();
       };
     });
@@ -71,7 +58,7 @@ const DB = {
 };
 
 // ==========================================
-// 3. ПАРСЕР (С учетом родительских папок)
+// 3. Parser (Strict v3.0)
 // ==========================================
 const Parser = {
   parse(file) {
@@ -81,114 +68,89 @@ const Parser = {
         try {
           const wb = XLSX.read(e.target.result, { type: 'array' });
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null, raw: true });
-          resolve(this.buildTree(rows, file.name));
+          resolve(this.build(rows, file.name));
         } catch (err) { reject(err); }
       };
       reader.readAsArrayBuffer(file);
     });
   },
 
-  buildTree(rows, filename) {
-    const roots = []; let stack = []; let controlSum = null;
-    let step = 2; 
-    for (let i = 1; i < rows.length; i++) {
-      const a = String(rows[i-1]?.[0] || '').match(/^[\s\u00A0]+/)?.[0].length || 0;
-      const b = String(rows[i]?.[0] || '').match(/^[\s\u00A0]+/)?.[0].length || 0;
-      if (a !== b) { step = Math.abs(a - b); break; }
-    }
+  build(rows, filename) {
+    let controlSum = 0, step = 2;
+    let dateMatch = filename.match(/(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})\s*[-–—]\s*(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/);
     
-    // Парсим даты (только для прогноза, фиксированные 3 дня из файла)
-    const match = filename.match(/(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})\s*[-–—]\s*(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/);
-    let days = 3; // По умолчанию 3 дня, если файл не распознан
-    if (match) {
-      const start = new Date(match[3].length === 2 ? '20'+match[3] : match[3], match[2]-1, match[1]);
-      const end = new Date(match[6].length === 2 ? '20'+match[6] : match[6], match[5]-1, match[4]);
-      days = Math.round((end - start) / 86400000) + 1;
+    // Дефолтные дни (если файл не распознан)
+    let daysInPeriod = 30, daysInMonth = 30;
+    if (dateMatch) {
+      const s = new Date(dateMatch[3].length===2?'20'+dateMatch[3]:dateMatch[3], dateMatch[2]-1, dateMatch[1]);
+      const e = new Date(dateMatch[6].length===2?'20'+dateMatch[6]:dateMatch[6], dateMatch[5]-1, dateMatch[4]);
+      daysInPeriod = Math.round((e - s)/86400000) + 1;
+      daysInMonth = new Date(s.getFullYear(), s.getMonth()+1, 0).getDate(); // Кол-во дней в целевом месяце
     }
 
-    const toNum = (v) => { 
-      if (v === null || v === undefined || v === '' || v === '—' || v === '-') return 0; 
-      if (typeof v === 'number') return v;
-      return parseFloat(String(v).replace(/[\s\u00A0]/g,'').replace(',','.')) || 0; 
-    };
+    const toNum = (v) => (typeof v === 'number' ? v : parseFloat(String(v||'').replace(/[\s\u00A0]/g,'').replace(',','.')) || 0);
+    const isItem = (name) => /\d+\s*[рp₽]|\(\-?\d+%\)/i.test(name);
 
-    // ВАЖНО: Мы определяем "Папку" как родителя, у которого есть товары.
-    // Нам не нужны вложенные папки типа "до 01.10.2026" внутри "Куртки". Мы берем только "Куртки".
-    
-    rows.forEach((row) => {
-      const rawName = row[0];
-      if (!rawName) return;
-      const name = String(rawName).trim();
-      if (['Продажи','Магазин','Склад','Номенклатура','Торговый зал'].includes(name)) return;
-      if (name === 'Мода' || name === 'Итого') { controlSum = toNum(row[4]); return; }
+    const roots = []; let stack = [];
 
-      const indent = String(rawName).match(/^[\s\u00A0]+/)?.[0].length || 0;
+    rows.forEach(row => {
+      const raw = row[0]; if (!raw) return;
+      const name = String(raw).trim();
+      if (['Продажи','Магазин','Склад','Номенклатура','Торговый зал','Итого'].includes(name)) return;
+      if (name === 'Мода') { controlSum = toNum(row[4]); return; }
+
+      const indent = String(raw).match(/^[\s\u00A0]+/)?.[0].length || 0;
       const level = Math.round(indent / step);
-      const sum = toNum(row[4]);
-      const qty = toNum(row[3]);
-
-      while (stack.length > 0 && stack[stack.length-1].level >= level) { stack.pop(); }
       
-      const parentPath = stack.length > 0 ? stack[stack.length-1].path : '';
-      const isItem = /\d+\s*[рp₽]|\(\-?\d+%\)/i.test(name);
+      while (stack.length > 0 && stack[stack.length-1].level >= level) stack.pop();
       
-      // Пропускаем служебные подпапки, чтобы не было дублей (например, "Куртки до 1.10" внутри "Куртки")
-      if (name.includes('до ') && stack.length > 0 && stack[stack.length-1].name.includes('Куртки')) return;
-
       const node = {
-        name, level, sum, qty, isItem, children: [], path: parentPath ? `${parentPath} > ${name}` : name,
-        category: this.detectCat(parentPath || name),
-        gender: this.detectGender(parentPath || name)
+        name, level, sum: toNum(row[4]), qty: toNum(row[3]), isItem: isItem(name),
+        children: [], path: stack.length ? `${stack[stack.length-1].path} > ${name}` : name,
+        category: this.cat(stack.length ? stack[stack.length-1].path : name),
+        gender: this.gen(stack.length ? stack[stack.length-1].path : name)
       };
 
       if (stack.length > 0) {
         stack[stack.length-1].children.push(node);
-        stack[stack.length-1].sum += sum; // Суммируем в родителя (для расчета сходимости)
-      } else {
-        roots.push(node);
-      }
+        // Сумма родителя = сумма его прямых товаров + сумма дочерних папок
+        stack[stack.length-1].sum += node.sum;
+      } else roots.push(node);
       if (!node.isItem) stack.push(node);
     });
 
-    // Считаем только конечные папки (где лежат товары), чтобы избежать двойного счета
-    let trueLeafSum = 0;
-    const sumLeaves = (nodes) => {
-      nodes.forEach(n => {
-        // Если это папка с товарами (Куртки, Джинсы), берем её сумму
-        if (n.children.length === 0 || n.children.every(c => c.isItem)) {
-          trueLeafSum += n.sum;
-        } else {
-          sumLeaves(n.children);
-        }
-      });
-    };
+    // Валидация (считаем только конечные папки, чтобы избежать дублей)
+    let trueSum = 0;
+    const sumLeaves = (nodes) => nodes.forEach(n => {
+      if (n.children.length === 0 || n.children.every(c => c.isItem)) trueSum += n.sum;
+      else sumLeaves(n.children);
+    });
     sumLeaves(roots);
 
-    const valid = controlSum ? Math.abs(trueLeafSum - controlSum) / controlSum < 0.01 : true;
+    const valid = Math.abs(trueSum - controlSum) / (controlSum || 1) < 0.01;
 
-    return { roots, days, totalSum: controlSum || trueLeafSum, valid, errorMsg: valid ? '' : `Сумма листьев (${Math.round(trueLeafSum)}) не сходится с Итого (${controlSum})` };
+    return { roots, daysInPeriod, daysInMonth, totalSum: controlSum, valid, date: new Date().toISOString() };
   },
 
-  detectCat(path) {
+  cat(path) {
     if (path.includes('Обувь')) return 'Обувь';
     if (path.includes('Аксессуар')) return 'Аксессуары';
     if (path.includes('Распродаж') || path.includes('Будут удалены')) return 'Распродажа';
     return 'Одежда';
   },
-
-  detectGender(path) {
+  gen(path) {
     if (path.includes('Женск') || path.includes('Девочк')) return 'Ж';
     if (path.includes('Мужск') || path.includes('Мальчик')) return 'М';
     if (path.includes('Детск')) return 'Д';
-    return '—';
+    return null;
   }
 };
 
 // ==========================================
-// 4. РОУТЕР
+// 4. APP Router & Screens
 // ==========================================
 const App = {
-  currentScreen: 'home',
+  screen: 'home',
   nav: [
     { id: 'home', icon: Icons.home, label: 'Главная' },
     { id: 'analytics', icon: Icons.chart, label: 'Аналитика' },
@@ -196,24 +158,25 @@ const App = {
     { id: 'settings', icon: Icons.settings, label: 'Настройки' }
   ],
 
-  init() { this.renderNav(); this.route(this.currentScreen); },
-
-  renderNav() {
+  init() {
     document.getElementById('nav').innerHTML = this.nav.map(n => `
-      <a href="#" class="nav-item ${this.currentScreen === n.id ? 'active' : ''}" data-nav="${n.id}">
+      <a href="#" class="nav-item ${this.screen === n.id ? 'active' : ''}" onclick="App.route('${n.id}')">
         ${n.icon}<span>${n.label}</span>
       </a>
     `).join('');
-    document.querySelectorAll('[data-nav]').forEach(el => {
-      el.onclick = (e) => { e.preventDefault(); this.route(el.dataset.nav); };
-    });
+    this.route(this.screen);
   },
 
   route(screen) {
-    this.currentScreen = screen;
-    this.renderNav();
+    this.screen = screen;
+    document.getElementById('nav').innerHTML = this.nav.map(n => `
+      <a href="#" class="nav-item ${this.screen === n.id ? 'active' : ''}" onclick="App.route('${n.id}')">
+        ${n.icon}<span>${n.label}</span>
+      </a>
+    `).join('');
     const root = document.getElementById('screen');
     root.innerHTML = '';
+    
     if (screen === 'home') Screens.home(root);
     if (screen === 'analytics') Screens.analytics(root);
     if (screen === 'rails') Screens.rails(root);
@@ -222,61 +185,57 @@ const App = {
   }
 };
 
-// ==========================================
-// 5. ЭКРАНЫ
-// ==========================================
 const Screens = {
+  // --- ГЛАВНАЯ ---
   home(root) {
-    if (!DB.data) {
-      root.innerHTML = `<div class="header"><h1 class="h1">Главная</h1></div><div class="card"><div class="empty-state"><div class="empty-title">Нет данных</div><button class="btn btn-primary" onclick="App.route('settings')">Перейти в настройки</button></div></div>`;
+    const current = DB.data.imports[0]; // Берем последний импорт
+    if (!current) {
+      root.innerHTML = `
+        <div class="header"><h1 class="h1">Главная</h1></div>
+        <div class="card" style="text-align:center; padding: 40px 20px;">
+          <h2 style="font-size:20px; font-weight:800; margin-bottom:8px;">Нет данных</h2>
+          <p style="color:var(--text-muted); margin-bottom:20px;">Загрузите выгрузку 1С, чтобы увидеть аналитику</p>
+          <button class="btn btn-primary" onclick="App.route('settings')">Перейти в настройки</button>
+        </div>`;
       return;
     }
 
-    const d = DB.data;
-    const plan = d.plan || d.totalSum * 1.10;
-    const planPct = Math.min(100, (d.totalSum / plan) * 100);
-    // Правильный прогноз: (Выручка / дни_в_файле) * коэффициент_дней_в_месяце (30)
-    const forecast = (d.totalSum / d.days) * 30 * 1.05;
+    const plan = DB.data.plans[current.date.slice(0,7)] || current.totalSum * 1.10;
+    const planPct = Math.min(100, (current.totalSum / plan) * 100);
+    const forecast = (current.totalSum / current.daysInPeriod) * current.daysInMonth * 1.05;
 
-    // КИТЫ (Категории): Считаем только верхнеуровневые папки (Одежда, Обувь и т.д.)
+    // Категории (берем только верхние суммы из корней)
     const cats = { 'Одежда':0, 'Обувь':0, 'Аксессуары':0, 'Распродажа':0 };
-    d.roots.forEach(r => { 
-      if (cats[r.category] !== undefined) cats[r.category] += r.sum; 
-    });
+    current.roots.forEach(r => { if (cats[r.category] !== undefined) cats[r.category] += r.sum; });
 
-    // СБОР ДЛЯ ТОП-5 (по полам)
+    // Топ-5 папок по полам
     let tops = { 'М': [], 'Ж': [], 'Д': [], 'Аксессуары': [] };
-    const collectTop = (nodes, cat) => {
-      nodes.forEach(n => {
-        if (n.isItem) return; // Нам нужны только папки (Джинсы, Куртки)
-        // Если это конечная папка с товарами внутри
-        if (n.children.length === 0 || n.children.every(c => c.isItem)) {
-          if (cat === 'Аксессуары' && n.category === 'Аксессуары') tops['Аксессуары'].push(n);
-          else if (n.gender === 'М') tops['М'].push(n);
-          else if (n.gender === 'Ж') tops['Ж'].push(n);
-          else if (n.gender === 'Д') tops['Д'].push(n);
-        } else {
-          collectTop(n.children, cat);
-        }
-      });
-    };
-    collectTop(d.roots, '');
+    const collect = (nodes) => nodes.forEach(n => {
+      if (n.isItem) return;
+      if (n.children.length === 0 || n.children.every(c => c.isItem)) {
+        if (n.category === 'Аксессуары') tops['Аксессуары'].push(n);
+        else if (n.gender === 'М') tops['М'].push(n);
+        else if (n.gender === 'Ж') tops['Ж'].push(n);
+        else if (n.gender === 'Д') tops['Д'].push(n);
+      } else collect(n.children);
+    });
+    collect(current.roots);
     Object.keys(tops).forEach(k => tops[k].sort((a,b) => b.sum - a.sum));
 
     root.innerHTML = `
       <div class="header">
         <div>
-          <h1 class="h1">Мода <span style="font-size:16px;color:var(--text-muted)">▾</span></h1>
-          <div class="subtitle">Данные за ${d.days} дн.</div>
+          <h1 class="h1">Мода ▾</h1>
+          <div class="subtitle">Данные за ${current.daysInPeriod} дн.</div>
         </div>
-        <div class="tag ${d.valid ? 'ok' : 'err'}" id="err-tag">
-          ${d.valid ? 'Всё ок' : 'Ошибка'}
+        <div class="tag ${current.valid ? 'ok' : 'err'}" onclick="alert('${current.valid ? 'Суммы сходятся!' : 'Расхождение в суммах!'}')">
+          ${current.valid ? 'Всё ок' : 'Ошибка'}
         </div>
       </div>
 
       <div class="card hero-card">
         <div class="card-title">Выручка магазина</div>
-        <div class="hero-val num">${Math.round(d.totalSum).toLocaleString('ru-RU')} ₽</div>
+        <div class="hero-val num">${Math.round(current.totalSum).toLocaleString('ru-RU')} ₽</div>
         <div class="hero-meta">
           <span>План: ${Math.round(plan).toLocaleString('ru-RU')} ₽</span>
           <span>${Math.round(planPct)}%</span>
@@ -302,81 +261,51 @@ const Screens = {
       <div class="card">
         <div class="card-title">Топ-5 папок</div>
         <div class="tabs">
-          <div class="tab active" data-tab="М">Мужской</div>
-          <div class="tab" data-tab="Ж">Женский</div>
-          <div class="tab" data-tab="Д">Детский</div>
-          <div class="tab" data-tab="Аксессуары">Аксесс.</div>
+          <div class="tab active" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.getElementById('top-list').innerHTML=renderTop('М')">Мужской</div>
+          <div class="tab" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.getElementById('top-list').innerHTML=renderTop('Ж')">Женский</div>
+          <div class="tab" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.getElementById('top-list').innerHTML=renderTop('Д')">Детский</div>
+          <div class="tab" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.getElementById('top-list').innerHTML=renderTop('Аксессуары')">Аксесс.</div>
         </div>
-        <div id="top-list">
-          ${tops['М'].slice(0,5).map((item, i) => `
-            <div class="list-item">
-              <div>
-                <div class="item-name">${i+1}. ${item.name}</div>
-                <div class="item-desc">${item.path.split(' > ').slice(-2).join(' · ')}</div>
-              </div>
-              <div class="item-val num">${Math.round(item.sum).toLocaleString('ru-RU')} ₽</div>
-            </div>
-          `).join('')}
-        </div>
+        <div id="top-list"></div>
       </div>
     `;
 
-    // Логика вкладок Топ-5
-    root.querySelectorAll('.tab').forEach(tab => {
-      tab.onclick = () => {
-        root.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        const gender = tab.dataset.tab;
-        root.querySelector('#top-list').innerHTML = tops[gender].slice(0, 5).map((item, i) => `
-          <div class="list-item">
-            <div>
-              <div class="item-name">${i+1}. ${item.name}</div>
-              <div class="item-desc">${item.path.split(' > ').slice(-2).join(' · ')}</div>
-            </div>
-            <div class="item-val num">${Math.round(item.sum).toLocaleString('ru-RU')} ₽</div>
-          </div>
-        `).join('');
-      };
-    });
-
-    // Клик по ошибке
-    if (!d.valid) {
-      root.querySelector('#err-tag').onclick = () => {
-        UI.modal(`
-          <h2 style="font-size:24px;font-weight:800;margin-bottom:12px;color:var(--danger)">Ошибка сходимости</h2>
-          <p style="color:var(--text-muted);font-size:16px;margin-bottom:24px;">${d.errorMsg}</p>
-          <button class="btn btn-primary" onclick="UI.closeModal()">Понятно</button>
-        `);
-      };
-    }
+    window.renderTop = (gender) => tops[gender].slice(0, 5).map((item, i) => `
+      <div class="list-item">
+        <div>
+          <div class="item-name">${i+1}. ${item.name}</div>
+          <div class="item-desc">${item.path.split(' > ').slice(-2).join(' · ')}</div>
+        </div>
+        <div class="item-val num">${Math.round(item.sum).toLocaleString('ru-RU')} ₽</div>
+      </div>
+    `).join('');
+    
+    document.getElementById('top-list').innerHTML = window.renderTop('М');
   },
 
+  // --- АНАЛИТИКА ---
   analytics(root) {
-    if (!DB.data) return App.route('home');
-    
-    // СБОР ПАПОК ДЛЯ ABC (Нам нужны только папки, а не отдельные товары)
+    const current = DB.data.imports[0];
+    if (!current) return App.route('home');
+
+    // Собираем только папки (у которых есть товары)
     let folders = [];
-    const collectFolders = (nodes) => {
-      nodes.forEach(n => {
-        if (n.isItem) return;
-        if (n.children.length === 0 || n.children.every(c => c.isItem)) {
-          folders.push(n); // Это папка (например, Джинсы)
-        } else {
-          collectFolders(n.children);
-        }
-      });
-    };
-    collectFolders(DB.data.roots);
-    folders.sort((a, b) => b.sum - a.sum);
+    const collect = (nodes) => nodes.forEach(n => {
+      if (n.isItem) return;
+      if (n.children.length === 0 || n.children.every(c => c.isItem)) folders.push(n);
+      else collect(n.children);
+    });
+    collect(current.roots);
+    folders.sort((a,b) => b.sum - a.sum);
 
     let total = folders.reduce((acc, f) => acc + (f.sum > 0 ? f.sum : 0), 0);
-    let cum = 0, a=0, b=0, c=0;
+    let cum = 0, a=[], b=[], c=[];
     folders.forEach(f => {
-      if (f.sum <= 0) { c++; return; }
+      if (f.sum <= 0) { c.push(f); return; }
       cum += f.sum;
-      if (cum <= total * 0.8) a++;
-      else if (cum <= total * 0.95) b++;
-      else c++;
+      if (cum <= total * 0.8) a.push(f);
+      else if (cum <= total * 0.95) b.push(f);
+      else c.push(f);
     });
 
     root.innerHTML = `
@@ -384,22 +313,24 @@ const Screens = {
       
       <div class="card">
         <div class="card-title">ABC-Анализ папок</div>
-        <div style="display:flex;gap:8px;margin-bottom:16px;">
-          <button class="btn btn-primary" style="padding:8px 16px;font-size:14px;">По выручке</button>
-        </div>
-        <div class="stats-grid">
+        <div class="stats-grid" style="margin-bottom:16px;">
           <div class="stat-box" style="background:var(--accent)">
             <div class="stat-label" style="color:var(--text)">A (80%)</div>
-            <div class="stat-val num" style="margin-top:8px">${a} папок</div>
+            <div class="stat-val num">${a.length} папок</div>
           </div>
           <div class="stat-box" style="background:var(--evergreen);color:#fff">
             <div class="stat-label" style="color:#fff">B (15%)</div>
-            <div class="stat-val num" style="margin-top:8px">${b} папок</div>
+            <div class="stat-val num">${b.length} папок</div>
           </div>
           <div class="stat-box" style="background:var(--danger-bg);color:var(--danger)">
             <div class="stat-label" style="color:var(--danger)">C (5%)</div>
-            <div class="stat-val num" style="margin-top:8px">${c} папок</div>
+            <div class="stat-val num">${c.length} папок</div>
           </div>
+        </div>
+        <button class="btn btn-secondary" onclick="document.getElementById('abc-list').style.display = document.getElementById('abc-list').style.display === 'none' ? 'block' : 'none'">Показать списки</button>
+        <div id="abc-list" style="display:none; margin-top:16px;">
+          <div style="font-weight:800; margin-bottom:8px; color:var(--accent)">Группа А</div>
+          ${a.map(f => `<div class="list-item"><div class="item-name">${f.name}</div><div class="item-val num">${Math.round(f.sum).toLocaleString('ru-RU')} ₽</div></div>`).join('')}
         </div>
       </div>
 
@@ -408,27 +339,18 @@ const Screens = {
         <div style="background:var(--danger-bg);padding:16px;border-radius:16px;margin-bottom:16px;">
           <div style="font-weight:800;color:var(--danger);margin-bottom:4px;">Найдено ограничение</div>
           <div style="font-size:14px;font-weight:500;color:var(--danger);">
-            ${c} папок приносят менее 5% выручки. Рекомендуется проверить их.
+            ${c.length} папок приносят менее 5% выручки. Рекомендуется сократить их метраж.
           </div>
         </div>
-        <button class="btn btn-primary" id="btn-rec">Показать рекомендации</button>
+        <button class="btn btn-primary" onclick="document.getElementById('rec-list').style.display = document.getElementById('rec-list').style.display === 'none' ? 'block' : 'none'">Показать рекомендации</button>
         <div id="rec-list" style="display:none; margin-top:16px;">
-          ${folders.filter(f => f.sum < total * 0.01).map(f => `
-            <div class="list-item">
-              <div class="item-name">${f.name}</div>
-              <div class="item-val" style="color:var(--danger)">Сократить метр</div>
-            </div>
-          `).join('')}
+          ${c.slice(0, 5).map(f => `<div class="list-item"><div class="item-name">${f.name}</div><div class="item-val" style="color:var(--danger)">Сократить метр</div></div>`).join('')}
         </div>
       </div>
     `;
-
-    root.querySelector('#btn-rec').onclick = () => {
-      const list = root.querySelector('#rec-list');
-      list.style.display = list.style.display === 'none' ? 'block' : 'none';
-    };
   },
 
+  // --- РЕЙЛЫ ---
   rails(root) {
     root.innerHTML = `
       <div class="header"><h1 class="h1">Рейлы</h1></div>
@@ -447,6 +369,7 @@ const Screens = {
     `;
   },
 
+  // --- НАСТРОЙКИ ---
   settings(root) {
     root.innerHTML = `
       <div class="header"><h1 class="h1">Настройки</h1></div>
@@ -458,13 +381,14 @@ const Screens = {
         </p>
         <input type="file" id="file-upload" accept=".xlsx" style="display:none">
         <button class="btn btn-primary" id="btn-upload">Загрузить .xlsx</button>
-        ${DB.data ? `<button class="btn btn-secondary" style="margin-top:12px;color:var(--danger)" id="btn-clear">Очистить данные</button>` : ''}
+        ${DB.data.imports.length ? `<button class="btn btn-secondary" style="margin-top:12px;color:var(--danger)" id="btn-clear">Очистить данные</button>` : ''}
       </div>
     `;
 
-    if (DB.data) {
+    if (DB.data.imports.length) {
       document.getElementById('btn-clear').onclick = async () => {
-        await DB.clear(); UI.toast('Данные удалены'); App.route('home');
+        DB.data = { imports: [], rails: [], links: [], plans: {} };
+        await DB.save(); UI.toast('Данные удалены'); App.route('home');
       };
     }
 
@@ -477,7 +401,8 @@ const Screens = {
       UI.toast('Парсинг файла...', 'default');
       try {
         const data = await Parser.parse(file);
-        await DB.save(data);
+        DB.data.imports.unshift(data); // Сохраняем в историю
+        await DB.save();
         UI.toast(data.valid ? 'Успешно загружено!' : 'Внимание: расхождение в суммах!', data.valid ? 'default' : 'error');
         App.route('home');
       } catch (err) {
@@ -488,7 +413,7 @@ const Screens = {
 };
 
 // ==========================================
-// 6. ИНИЦИАЛИЗАЦИЯ
+// 5. INIT
 // ==========================================
 DB.init().then(() => {
   App.init();
