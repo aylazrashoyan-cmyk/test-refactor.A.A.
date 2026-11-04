@@ -29,7 +29,7 @@ const UI = {
 // 2. DB (IndexedDB)
 // ==========================================
 const DB = {
-  dbName: 'analitik_v4', storeName: 'data', data: null,
+  dbName: 'analitik_v5', storeName: 'data', data: null,
   async init() {
     return new Promise((resolve) => {
       const req = indexedDB.open(this.dbName, 1);
@@ -58,7 +58,7 @@ const DB = {
 };
 
 // ==========================================
-// 3. Parser (v4.0 — ИСПРАВЛЕНА МАТЕМАТИКА)
+// 3. Parser (v5.0 — УМНЫЙ ПАРСЕР)
 // ==========================================
 const Parser = {
   parse(file) {
@@ -103,7 +103,7 @@ const Parser = {
 
       while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
 
-      // ВАЖНО: мы НЕ суммируем родителей. Сумма узла берётся из файла (row[4]).
+      // Берем суммы ИЗ ФАЙЛА, не суммируем вручную
       const node = {
         name, level, sum: toNum(row[4]), qty: toNum(row[3]), isItem: isItem(name),
         children: [], path: stack.length ? `${stack[stack.length - 1].path} > ${name}` : name,
@@ -111,16 +111,13 @@ const Parser = {
         gender: this.gen(stack.length ? stack[stack.length - 1].path : name)
       };
 
-      if (stack.length > 0) {
-        stack[stack.length - 1].children.push(node);
-      } else {
-        roots.push(node);
-      }
+      if (stack.length > 0) stack[stack.length - 1].children.push(node);
+      else roots.push(node);
+      
       if (!node.isItem) stack.push(node);
     });
 
-    // ВАЛИДАЦИЯ: считаем только конечные листья (isItem === true).
-    // НЕ берём промежуточные итоги — иначе двойной счёт.
+    // Валидация по листьям
     let leavesSum = 0;
     const collectLeaves = (nodes) => nodes.forEach(n => {
       if (n.isItem) leavesSum += n.sum;
@@ -129,17 +126,9 @@ const Parser = {
     collectLeaves(roots);
 
     const valid = Math.abs(leavesSum - controlSum) / (controlSum || 1) < 0.01;
-    const errorMsg = valid ? '' : {
-      leaves: Math.round(leavesSum),
-      control: Math.round(controlSum)
-    };
+    const errorMsg = valid ? '' : { leaves: Math.round(leavesSum), control: Math.round(controlSum) };
 
-    return {
-      roots, daysInPeriod, daysInMonth, totalSum: controlSum,
-      leavesSum: Math.round(leavesSum), valid, errorMsg,
-      date: new Date().toISOString(),
-      filename
-    };
+    return { roots, daysInPeriod, daysInMonth, totalSum: controlSum, valid, errorMsg, date: new Date().toISOString(), filename };
   },
 
   cat(path) {
@@ -186,7 +175,6 @@ const App = {
     this.renderNav();
     const root = document.getElementById('screen');
     root.innerHTML = '';
-
     if (screen === 'home') Screens.home(root);
     if (screen === 'analytics') Screens.analytics(root);
     if (screen === 'rails') Screens.rails(root);
@@ -196,7 +184,6 @@ const App = {
 };
 
 const Screens = {
-  // --- ГЛАВНАЯ ---
   home(root) {
     const current = DB.data.imports[0];
     if (!current) {
@@ -210,37 +197,92 @@ const Screens = {
       return;
     }
 
-    // План берём из настроек. Если нет — равен факту (не факт*1.1).
     const planKey = current.date.slice(0, 7);
     const plan = DB.data.plans[planKey] || current.totalSum;
     const planPct = plan > 0 ? Math.min(100, (current.totalSum / plan) * 100) : 0;
-
-    // Прогноз только если дней >= 10 (иначе не врём)
     const showForecast = current.daysInPeriod >= 10;
-    const forecast = showForecast
-      ? Math.round((current.totalSum / current.daysInPeriod) * current.daysInMonth)
-      : null;
+    const forecast = showForecast ? Math.round((current.totalSum / current.daysInPeriod) * current.daysInMonth) : null;
 
-    // КАТЕГОРИИ — берём ТОЛЬКО корневые папки (они уже содержат итог из файла)
+    // КАТЕГОРИИ: берем корневые папки. Если "Одежда", "Обувь", "Аксессуары" лежат отдельно — они и будут корневыми.
     const cats = { 'Одежда': 0, 'Обувь': 0, 'Аксессуары': 0, 'Распродажа': 0 };
-    current.roots.forEach(r => { if (cats[r.category] !== undefined) cats[r.category] += r.sum; });
+    current.roots.forEach(r => {
+      // В 1С может быть "Мода -> Мужская -> Верхняя одежда", а может "Мода -> Обувь"
+      if (r.category === 'Обувь') cats['Обувь'] += r.sum;
+      else if (r.category === 'Аксессуары') cats['Аксессуары'] += r.sum;
+      else if (r.category === 'Распродажа') cats['Распродажа'] += r.sum;
+      else cats['Одежда'] += r.sum;
+    });
 
-    // ТОП-5 ПАПОК — только конечные не-item папки (без дублей)
-    let tops = { 'М': [], 'Ж': [], 'Д': [], 'Аксессуары': [] };
-    const collect = (nodes) => nodes.forEach(n => {
-      if (n.isItem) return;
-      const isLeafFolder = n.children.length === 0 || n.children.every(c => c.isItem);
-      if (isLeafFolder) {
-        if (n.category === 'Аксессуары') tops['Аксессуары'].push(n);
-        else if (n.gender === 'М') tops['М'].push(n);
-        else if (n.gender === 'Ж') tops['Ж'].push(n);
-        else if (n.gender === 'Д') tops['Д'].push(n);
-      } else {
-        collect(n.children);
+    // УМНЫЙ СБОР ТОП-5
+    let tops = { 'М': [], 'Ж': [], 'Д': [], 'Аксессуары': [], 'Обувь': [] };
+    
+    // Функция рекурсивного поиска "нормальных" папок
+    const findLeaves = (nodes, depth = 0) => {
+      const result = [];
+      nodes.forEach(n => {
+        if (n.isItem) return; // Товары пропускаем
+        const isLeafFolder = n.children.length === 0 || n.children.every(c => c.isItem);
+        
+        // Если это папка с товарами (лист) И название не дублирует родителя (типа Куртки -> Куртки)
+        if (isLeafFolder) {
+          result.push(n);
+        } else {
+          // Если это промежуточная папка, спускаемся глубже
+          result.push(...findLeaves(n.children, depth + 1));
+        }
+      });
+      return result;
+    };
+
+    current.roots.forEach(rootNode => {
+      if (rootNode.category === 'Обувь') {
+        // Обувь: берем подпапки Женская/Мужская/Детская, а в них уже листья
+        rootNode.children.forEach(genderNode => {
+          if (genderNode.name.includes('Женск') || genderNode.name.includes('Девочк')) tops['Ж'].push(...findLeaves([genderNode]));
+          else if (genderNode.name.includes('Мужск') || genderNode.name.includes('Мальчик')) tops['М'].push(...findLeaves([genderNode]));
+          else if (genderNode.name.includes('Детск')) tops['Д'].push(...findLeaves([genderNode]));
+          else tops['Обувь'].push(...findLeaves([genderNode]));
+        });
+      } 
+      else if (rootNode.category === 'Аксессуары') {
+        // Аксессуары: берем папки 1-го уровня (Носки, Сумки, Рюкзаки)
+        rootNode.children.forEach(child => {
+          if (child.name !== 'Аксессуары' && !child.isItem) tops['Аксессуары'].push(child);
+        });
+      } 
+      else {
+        // Одежда (Ж, М, Д)
+        if (rootNode.name.includes('Женск')) tops['Ж'].push(...findLeaves(rootNode.children));
+        else if (rootNode.name.includes('Мужск')) tops['М'].push(...findLeaves(rootNode.children));
+        else if (rootNode.name.includes('Детск')) tops['Д'].push(...findLeaves(rootNode.children));
+        else {
+           // Если в корне лежит "Одежда" (как общая папка), распределяем по детям
+           rootNode.children.forEach(child => {
+             if (child.name.includes('Женск')) tops['Ж'].push(...findLeaves(child.children));
+             else if (child.name.includes('Мужск')) tops['М'].push(...findLeaves(child.children));
+             else if (child.name.includes('Детск')) tops['Д'].push(...findLeaves(child.children));
+           });
+        }
       }
     });
-    collect(current.roots);
-    Object.keys(tops).forEach(k => tops[k].sort((a, b) => b.sum - a.sum));
+
+    // Очистка от пустых и дублей, сортировка
+    Object.keys(tops).forEach(k => {
+      const unique = [];
+      const seen = new Set();
+      tops[k].forEach(item => {
+        if (item.sum > 0 && !seen.has(item.name)) {
+          // Убираем дубли по имени (Куртки -> Куртки)
+          // Если у папки сумма равна сумме единственного ребенка, берем ребенка
+          if (item.children.length === 1 && !item.children[0].isItem && Math.abs(item.sum - item.children[0].sum) < 1) {
+            return; // Пропускаем пустышку
+          }
+          seen.add(item.name);
+          unique.push(item);
+        }
+      });
+      tops[k] = unique.sort((a, b) => b.sum - a.sum);
+    });
 
     root.innerHTML = `
       <div class="header">
@@ -262,12 +304,10 @@ const Screens = {
         </div>
         <div class="progress-wrap"><div class="progress-bar" style="width:${planPct}%"></div></div>
         ${forecast !== null ? `
-        <div style="margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);font-weight:500;">
-          Прогноз на месяц: <span style="color:var(--accent);font-weight:700">${forecast.toLocaleString('ru-RU')} ₽</span>
-        </div>` : `
-        <div style="margin-top:16px;font-size:13px;color:rgba(255,255,255,0.4);font-weight:500;">
-          Прогноз недоступен (мало данных: ${current.daysInPeriod} дн.)
-        </div>`}
+        <div class="forecast-text">Прогноз на месяц: <span style="color:var(--accent);font-weight:700">${forecast.toLocaleString('ru-RU')} ₽</span></div>
+        ` : `
+        <div class="forecast-text">Прогноз недоступен (мало данных: ${current.daysInPeriod} дн.)</div>
+        `}
       </div>
 
       <div class="card">
@@ -282,242 +322,26 @@ const Screens = {
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" style="padding-bottom:12px">
         <div class="card-title">Топ-5 папок</div>
-        <div class="tabs">
-          <div class="tab active" data-g="М" onclick="window.switchTop('М')">Мужской</div>
-          <div class="tab" data-g="Ж" onclick="window.switchTop('Ж')">Женский</div>
-          <div class="tab" data-g="Д" onclick="window.switchTop('Д')">Детский</div>
-          <div class="tab" data-g="Аксессуары" onclick="window.switchTop('Аксессуары')">Аксесс.</div>
+        <div class="tabs-scroll">
+          <div class="tab active" data-g="М" onclick="window.switchTop('М', this)">Мужская одежда</div>
+          <div class="tab" data-g="Ж" onclick="window.switchTop('Ж', this)">Женская одежда</div>
+          <div class="tab" data-g="Д" onclick="window.switchTop('Д', this)">Детская</div>
+          <div class="tab" data-g="Обувь" onclick="window.switchTop('Обувь', this)">Обувь</div>
+          <div class="tab" data-g="Аксессуары" onclick="window.switchTop('Аксессуары', this)">Аксессуары</div>
         </div>
-        <div id="top-list"></div>
+        <div id="top-list" style="margin-top: 8px;"></div>
       </div>
     `;
 
     window.renderTop = (gender) => {
       const list = tops[gender] || [];
-      if (!list.length) return `<div class="item-desc" style="padding:16px 0">Нет данных по этой категории</div>`;
+      if (!list.length) return `<div class="item-desc" style="padding:16px 0">Нет данных</div>`;
       return list.slice(0, 5).map((item, i) => `
         <div class="list-item">
           <div>
             <div class="item-name">${i + 1}. ${item.name}</div>
             <div class="item-desc">${item.path.split(' > ').slice(-2).join(' · ')}</div>
           </div>
-          <div class="item-val num ${item.sum < 0 ? 'neg' : ''}">${Math.round(item.sum).toLocaleString('ru-RU')} ₽</div>
-        </div>
-      `).join('');
-    };
-
-    window.switchTop = (g) => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.g === g));
-      document.getElementById('top-list').innerHTML = window.renderTop(g);
-    };
-
-    document.getElementById('top-list').innerHTML = window.renderTop('М');
-
-    if (!current.valid) {
-      document.getElementById('err-tag').onclick = () => {
-        const em = current.errorMsg;
-        UI.modal(`
-          <h2 style="font-size:24px;font-weight:800;margin-bottom:12px;color:var(--danger)">Ошибка в файле</h2>
-          <p style="color:var(--text-muted);font-size:16px;margin-bottom:24px;">
-            Итог по товарам (${em.leaves.toLocaleString('ru-RU')} ₽) не совпадает с итогом магазина (${em.control.toLocaleString('ru-RU')} ₽).
-            Проверьте выгрузку из 1С и загрузите файл заново.
-          </p>
-          <button class="btn btn-primary" onclick="UI.closeModal()">Понятно</button>
-        `);
-      };
-    }
-  },
-
-  // --- АНАЛИТИКА ---
-  analytics(root) {
-    const current = DB.data.imports[0];
-    if (!current) return App.route('home');
-
-    let folders = [];
-    const collect = (nodes) => nodes.forEach(n => {
-      if (n.isItem) return;
-      if (n.children.length === 0 || n.children.every(c => c.isItem)) folders.push(n);
-      else collect(n.children);
-    });
-    collect(current.roots);
-
-    // Отделяем отрицательные и нулевые значения в группу Z
-    const positive = folders.filter(f => f.sum > 0).sort((a, b) => b.sum - a.sum);
-    const zeroOrNeg = folders.filter(f => f.sum <= 0);
-
-    const total = positive.reduce((acc, f) => acc + f.sum, 0);
-    let cum = 0;
-    const a = [], b = [], c = [];
-    positive.forEach(f => {
-      cum += f.sum;
-      if (cum <= total * 0.8) a.push(f);
-      else if (cum <= total * 0.95) b.push(f);
-      else c.push(f);
-    });
-
-    root.innerHTML = `
-      <div class="header"><h1 class="h1">Аналитика</h1></div>
-
-      <div class="card">
-        <div class="card-title">ABC-Анализ папок</div>
-        <div class="stats-grid" style="margin-bottom:12px;">
-          <div class="stat-box" style="background:var(--accent)">
-            <div class="stat-label" style="color:var(--text)">A (80%)</div>
-            <div class="stat-val num">${a.length} папок</div>
-          </div>
-          <div class="stat-box" style="background:var(--danger);color:#fff">
-            <div class="stat-label" style="color:#fff">B (15%)</div>
-            <div class="stat-val num">${b.length} папок</div>
-          </div>
-          <div class="stat-box" style="background:var(--danger-bg);color:var(--danger)">
-            <div class="stat-label" style="color:var(--danger)">C (5%)</div>
-            <div class="stat-val num">${c.length} папок</div>
-          </div>
-          <div class="stat-box" style="background:var(--warn-bg);color:var(--warn)">
-            <div class="stat-label" style="color:var(--warn)">Z (возвраты)</div>
-            <div class="stat-val num">${zeroOrNeg.length}</div>
-          </div>
-        </div>
-        <button class="btn btn-secondary" id="btn-abc">Показать списки</button>
-        <div id="abc-list" style="display:none; margin-top:16px;">
-          ${this.renderGroup('Группа А', a)}
-          ${this.renderGroup('Группа B', b)}
-          ${this.renderGroup('Группа C', c)}
-          ${zeroOrNeg.length ? this.renderGroup('Группа Z (возвраты/нули)', zeroOrNeg, 'var(--warn)') : ''}
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Рекомендации (TOC)</div>
-        ${c.length ? `
-        <div style="background:var(--danger-bg);padding:16px;border-radius:16px;margin-bottom:16px;">
-          <div style="font-weight:800;color:var(--danger);margin-bottom:4px;">Найдено ограничение</div>
-          <div style="font-size:14px;font-weight:500;color:var(--danger);">
-            ${c.length} папок приносят менее 5% выручки. Рекомендуется сократить их метраж.
-          </div>
-        </div>
-        <button class="btn btn-primary" id="btn-rec">Показать рекомендации</button>
-        <div id="rec-list" style="display:none; margin-top:16px;">
-          ${c.slice(0, 5).map(f => `<div class="list-item"><div class="item-name">${f.name}</div><div class="item-val" style="color:var(--danger)">Сократить метр</div></div>`).join('')}
-        </div>` : `<p style="color:var(--text-muted);font-size:14px;">Ограничений не найдено — все папки приносят достаточную выручку.</p>`}
-      </div>
-    `;
-
-    document.getElementById('btn-abc').onclick = () => {
-      const el = document.getElementById('abc-list');
-      el.style.display = el.style.display === 'none' ? 'block' : 'none';
-    };
-    const btnRec = document.getElementById('btn-rec');
-    if (btnRec) btnRec.onclick = () => {
-      const el = document.getElementById('rec-list');
-      el.style.display = el.style.display === 'none' ? 'block' : 'none';
-    };
-  },
-
-  renderGroup(title, arr, color = 'var(--accent-dark)') {
-    if (!arr.length) return '';
-    return `
-      <div style="font-weight:800; margin:16px 0 8px; color:${color}">${title} (${arr.length})</div>
-      ${arr.map(f => `<div class="list-item"><div class="item-name">${f.name}</div><div class="item-val num ${f.sum < 0 ? 'neg' : ''}">${Math.round(f.sum).toLocaleString('ru-RU')} ₽</div></div>`).join('')}
-    `;
-  },
-
-  // --- РЕЙЛЫ (честная заглушка) ---
-  rails(root) {
-    root.innerHTML = `
-      <div class="header"><h1 class="h1">Рейлы</h1></div>
-      <div class="card empty-state">
-        <h2>В разработке</h2>
-        <p>Чтобы считать эффективность рейлов (₽/м), нужно загрузить карту рейлов и привязать к ним товары. Этот раздел появится в следующем обновлении.</p>
-      </div>
-    `;
-  },
-
-  // --- НАСТРОЙКИ ---
-  settings(root) {
-    const planKey = new Date().toISOString().slice(0, 7);
-    const currentPlan = DB.data.plans[planKey] || '';
-
-    root.innerHTML = `
-      <div class="header"><h1 class="h1">Настройки</h1></div>
-
-      <div class="card">
-        <div class="card-title">План на месяц</div>
-        <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px;font-weight:500;">
-          Введите плановую выручку на текущий месяц. Если не заполнить — план будет равен факту.
-        </p>
-        <input type="number" class="input" id="plan-input" placeholder="Например, 1000000" value="${currentPlan}">
-        <button class="btn btn-primary" style="margin-top:12px" id="btn-save-plan">Сохранить план</button>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Данные 1С</div>
-        <p style="font-size:14px;color:var(--text-muted);margin-bottom:20px;font-weight:500;">
-          Загрузите .xlsx файл. Парсер определит иерархию по отступам и проверит сходимость.
-        </p>
-        <input type="file" id="file-upload" accept=".xlsx" style="display:none">
-        <button class="btn btn-primary" id="btn-upload">Загрузить .xlsx</button>
-        ${DB.data.imports.length ? `<button class="btn btn-danger" style="margin-top:12px" id="btn-clear">Очистить все данные</button>` : ''}
-      </div>
-    `;
-
-    document.getElementById('btn-save-plan').onclick = async () => {
-      const val = parseFloat(document.getElementById('plan-input').value) || 0;
-      DB.data.plans[planKey] = val;
-      await DB.save();
-      UI.toast('План сохранён');
-    };
-
-    if (DB.data.imports.length) {
-      document.getElementById('btn-clear').onclick = async () => {
-        UI.modal(`
-          <h2 style="font-size:20px;font-weight:800;margin-bottom:12px;">Очистить данные?</h2>
-          <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">Все загруженные отчёты и планы будут удалены. Это действие нельзя отменить.</p>
-          <button class="btn btn-danger" onclick="window.confirmClear()">Да, удалить</button>
-          <button class="btn btn-secondary" style="margin-top:8px" onclick="UI.closeModal()">Отмена</button>
-        `);
-      };
-    }
-
-    window.confirmClear = async () => {
-      DB.data = { imports: [], rails: [], links: [], plans: {} };
-      await DB.save();
-      UI.closeModal();
-      UI.toast('Данные удалены');
-      App.route('home');
-    };
-
-    const fileInput = document.getElementById('file-upload');
-    document.getElementById('btn-upload').onclick = () => fileInput.click();
-
-    fileInput.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      UI.toast('Парсинг файла...');
-      try {
-        const data = await Parser.parse(file);
-        DB.data.imports.unshift(data);
-        await DB.save();
-        UI.toast(data.valid ? 'Успешно загружено' : 'Внимание: расхождение в суммах', data.valid ? 'default' : 'error');
-        App.route('home');
-      } catch (err) {
-        UI.toast('Ошибка чтения файла', 'error');
-      }
-    };
-  }
-};
-
-// ==========================================
-// 5. INIT
-// ==========================================
-window.App = App;
-window.UI = UI;
-
-DB.init().then(() => {
-  App.init();
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
-});
+          <div class="item-val num ${item.sum < 0 ? 'neg' : ''}">${Math.round(item.sum).to
