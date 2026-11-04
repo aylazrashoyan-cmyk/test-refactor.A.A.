@@ -1,4 +1,4 @@
-const CACHE = "metrag-v22";
+const CACHE = "metrag-v23";
 const ASSETS = ["./index.html", "./manifest.json",
   "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"];
 
