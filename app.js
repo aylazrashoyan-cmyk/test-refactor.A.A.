@@ -29,7 +29,7 @@ const UI = {
 // 2. DB (IndexedDB)
 // ==========================================
 const DB = {
-  dbName: 'analitik_v5', storeName: 'data', data: null,
+  dbName: 'analitik_v6', storeName: 'data', data: null,
   async init() {
     return new Promise((resolve) => {
       const req = indexedDB.open(this.dbName, 1);
@@ -58,7 +58,7 @@ const DB = {
 };
 
 // ==========================================
-// 3. Parser (v5.0 — УМНЫЙ ПАРСЕР)
+// 3. Parser (v6.0)
 // ==========================================
 const Parser = {
   parse(file) {
@@ -103,7 +103,6 @@ const Parser = {
 
       while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
 
-      // Берем суммы ИЗ ФАЙЛА, не суммируем вручную
       const node = {
         name, level, sum: toNum(row[4]), qty: toNum(row[3]), isItem: isItem(name),
         children: [], path: stack.length ? `${stack[stack.length - 1].path} > ${name}` : name,
@@ -117,7 +116,7 @@ const Parser = {
       if (!node.isItem) stack.push(node);
     });
 
-    // Валидация по листьям
+    // Валидация строго по листьям (isItem)
     let leavesSum = 0;
     const collectLeaves = (nodes) => nodes.forEach(n => {
       if (n.isItem) leavesSum += n.sum;
@@ -203,80 +202,67 @@ const Screens = {
     const showForecast = current.daysInPeriod >= 10;
     const forecast = showForecast ? Math.round((current.totalSum / current.daysInPeriod) * current.daysInMonth) : null;
 
-    // КАТЕГОРИИ: берем корневые папки. Если "Одежда", "Обувь", "Аксессуары" лежат отдельно — они и будут корневыми.
+    // === ИСПРАВЛЕННЫЕ КАТЕГОРИИ (только по листьям, без дублей) ===
     const cats = { 'Одежда': 0, 'Обувь': 0, 'Аксессуары': 0, 'Распродажа': 0 };
-    current.roots.forEach(r => {
-      // В 1С может быть "Мода -> Мужская -> Верхняя одежда", а может "Мода -> Обувь"
-      if (r.category === 'Обувь') cats['Обувь'] += r.sum;
-      else if (r.category === 'Аксессуары') cats['Аксессуары'] += r.sum;
-      else if (r.category === 'Распродажа') cats['Распродажа'] += r.sum;
-      else cats['Одежда'] += r.sum;
+    const calcCats = (nodes) => nodes.forEach(n => {
+      if (n.isItem) {
+        cats[n.category] += n.sum;
+      } else {
+        calcCats(n.children);
+      }
     });
+    calcCats(current.roots);
 
-    // УМНЫЙ СБОР ТОП-5
+    // === УМНЫЙ ПОИСК ТОП-5 ===
     let tops = { 'М': [], 'Ж': [], 'Д': [], 'Аксессуары': [], 'Обувь': [] };
     
-    // Функция рекурсивного поиска "нормальных" папок
-    const findLeaves = (nodes, depth = 0) => {
-      const result = [];
-      nodes.forEach(n => {
-        if (n.isItem) return; // Товары пропускаем
-        const isLeafFolder = n.children.length === 0 || n.children.every(c => c.isItem);
-        
-        // Если это папка с товарами (лист) И название не дублирует родителя (типа Куртки -> Куртки)
-        if (isLeafFolder) {
-          result.push(n);
-        } else {
-          // Если это промежуточная папка, спускаемся глубже
-          result.push(...findLeaves(n.children, depth + 1));
-        }
-      });
-      return result;
-    };
+    // Собираем все папки-листья (где лежат товары), сохраняя их родительский путь
+    const allLeafFolders = [];
+    const findLeafFolders = (nodes) => nodes.forEach(n => {
+      if (n.isItem) return;
+      const isLeaf = n.children.length === 0 || n.children.every(c => c.isItem);
+      if (isLeaf) {
+        allLeafFolders.push(n);
+      } else {
+        findLeafFolders(n.children);
+      }
+    });
+    findLeafFolders(current.roots);
 
-    current.roots.forEach(rootNode => {
-      if (rootNode.category === 'Обувь') {
-        // Обувь: берем подпапки Женская/Мужская/Детская, а в них уже листья
-        rootNode.children.forEach(genderNode => {
-          if (genderNode.name.includes('Женск') || genderNode.name.includes('Девочк')) tops['Ж'].push(...findLeaves([genderNode]));
-          else if (genderNode.name.includes('Мужск') || genderNode.name.includes('Мальчик')) tops['М'].push(...findLeaves([genderNode]));
-          else if (genderNode.name.includes('Детск')) tops['Д'].push(...findLeaves([genderNode]));
-          else tops['Обувь'].push(...findLeaves([genderNode]));
-        });
-      } 
-      else if (rootNode.category === 'Аксессуары') {
-        // Аксессуары: берем папки 1-го уровня (Носки, Сумки, Рюкзаки)
-        rootNode.children.forEach(child => {
-          if (child.name !== 'Аксессуары' && !child.isItem) tops['Аксессуары'].push(child);
-        });
-      } 
-      else {
-        // Одежда (Ж, М, Д)
-        if (rootNode.name.includes('Женск')) tops['Ж'].push(...findLeaves(rootNode.children));
-        else if (rootNode.name.includes('Мужск')) tops['М'].push(...findLeaves(rootNode.children));
-        else if (rootNode.name.includes('Детск')) tops['Д'].push(...findLeaves(rootNode.children));
-        else {
-           // Если в корне лежит "Одежда" (как общая папка), распределяем по детям
-           rootNode.children.forEach(child => {
-             if (child.name.includes('Женск')) tops['Ж'].push(...findLeaves(child.children));
-             else if (child.name.includes('Мужск')) tops['М'].push(...findLeaves(child.children));
-             else if (child.name.includes('Детск')) tops['Д'].push(...findLeaves(child.children));
-           });
+    // Распределяем по группам
+    allLeafFolders.forEach(folder => {
+      const path = folder.path.toLowerCase();
+      
+      // Аксессуары: ищем родителя "Аксессуары" (только 1 уровень вложенности)
+      if (folder.category === 'Аксессуары') {
+        // Если путь типа "Мода > Аксессуары > Носки" (2 дефиса = 2 уровень)
+        // Или "Аксессуары > Носки"
+        const parts = folder.path.split(' > ');
+        if (parts.length <= 3 && folder.name !== 'Аксессуары') {
+          tops['Аксессуары'].push(folder);
         }
+      }
+      // Обувь: по гендеру
+      else if (folder.category === 'Обувь') {
+        if (path.includes('женск')) tops['Ж'].push(folder); // Женская обувь идет в Ж
+        else if (path.includes('мужск')) tops['М'].push(folder); // Мужская обувь идет в М
+        else if (path.includes('детск') || path.includes('девочк') || path.includes('мальчик')) tops['Д'].push(folder);
+        else tops['Обувь'].push(folder);
+      }
+      // Одежда
+      else {
+        if (path.includes('женск') || path.includes('девочк')) tops['Ж'].push(folder);
+        else if (path.includes('мужск') || path.includes('мальчик')) tops['М'].push(folder);
+        else if (path.includes('детск')) tops['Д'].push(folder);
       }
     });
 
-    // Очистка от пустых и дублей, сортировка
+    // Сортировка и очистка
     Object.keys(tops).forEach(k => {
       const unique = [];
       const seen = new Set();
       tops[k].forEach(item => {
-        if (item.sum > 0 && !seen.has(item.name)) {
-          // Убираем дубли по имени (Куртки -> Куртки)
-          // Если у папки сумма равна сумме единственного ребенка, берем ребенка
-          if (item.children.length === 1 && !item.children[0].isItem && Math.abs(item.sum - item.children[0].sum) < 1) {
-            return; // Пропускаем пустышку
-          }
+        if (item.sum !== 0 && !seen.has(item.name)) {
           seen.add(item.name);
           unique.push(item);
         }
@@ -324,7 +310,7 @@ const Screens = {
 
       <div class="card" style="padding-bottom:12px">
         <div class="card-title">Топ-5 папок</div>
-        <div class="tabs-scroll">
+        <div class="tabs-scroll" id="tabs-container">
           <div class="tab active" data-g="М" onclick="window.switchTop('М', this)">Мужская одежда</div>
           <div class="tab" data-g="Ж" onclick="window.switchTop('Ж', this)">Женская одежда</div>
           <div class="tab" data-g="Д" onclick="window.switchTop('Д', this)">Детская</div>
@@ -336,8 +322,17 @@ const Screens = {
     `;
 
     window.renderTop = (gender) => {
-      const list = tops[gender] || [];
+      let list = tops[gender] || [];
+      if (gender === 'М' || gender === 'Ж') {
+        list = list.filter(i => i.category !== 'Обувь');
+      }
+      if (gender === 'Обувь') {
+        list = tops['М'].concat(tops['Ж'], tops['Д'], tops['Обувь'])
+                   .filter(i => i.category === 'Обувь')
+                   .sort((a, b) => b.sum - a.sum);
+      }
       if (!list.length) return `<div class="item-desc" style="padding:16px 0">Нет данных</div>`;
+      
       return list.slice(0, 5).map((item, i) => `
         <div class="list-item">
           <div>
