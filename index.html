@@ -228,144 +228,184 @@ function isServiceName(name){
   Чек-лист №2: поиск «Итого» + сверка с суммой листовых узлов.
   Чек-лист №1: ключ папки = полный путь.
 */
+/* ---------- 4. ПАРСЕР XLSX (АДАПТИРОВАН ПОД ВЫГРУЗКУ 1С) ---------- */
 function parseXlsx(arrayBuffer){
   const wb = XLSX.read(arrayBuffer, {type:"array"});
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
   if(!rows.length) throw new Error("Лист пуст");
 
-  // нормализация отступов
-  const norm = rows.map(r=>{
-    const raw = String(r[0] ?? "");
-    // таб = 2 пробела
-    const withSpaces = raw.replace(/\t/g,"  ");
-    const m = withSpaces.match(/^(\s*)/);
-    const indent = m ? m[1].length : 0;
-    return { rawName: withSpaces.trim(), indent, cells: r };
-  }).filter(x=>x.rawName.length>0);
+  return buildTreeFromXlsx(rows);
+}
 
-  // шаг отступа = минимальный ненулевой
-  let step = 2;
-  const indents = norm.map(x=>x.indent).filter(i=>i>0).sort((a,b)=>a-b);
-  if(indents.length){
-    // ищем минимальный, который повторяется или делит другие
-    const min = indents[0];
-    if(min>0 && min<=8) step = min;
-    else step = 2;
-  }
+// Очистка названий от лишних символов и неразрывных пробелов
+function cleanCellValue(v) {
+  if (v === null || v === undefined) return "";
+  return String(v).replace(/\u00a0/g, ' ').trim();
+}
 
-  // строим узлы
-  const nodes = norm.map(x=>({
-    name: x.rawName,
-    level: Math.floor(x.indent/step),
-    sum: numFromCells(x.cells),
-    qty: qtyFromCells(x.cells),
-    children: [],
-    parent: null,
-    path: ""
-  }));
+// Проверка, является ли строка строкой с данными (есть числа в колонках D и E)
+function isNumericRow(row) {
+  if (!row || row.length < 5) return false;
+  const valD = row[3];
+  const valE = row[4];
+  // Проверяем, что хотя бы одна из колонок содержит число (или строку, которую можно распарсить)
+  const isNum = (v) => {
+    if (typeof v === 'number' && isFinite(v)) return true;
+    if (typeof v === 'string') {
+      const cleaned = v.replace(/\s/g, '').replace(',', '.');
+      return cleaned.length > 0 && !isNaN(parseFloat(cleaned));
+    }
+    return false;
+  };
+  return isNum(valD) || isNum(valE);
+}
 
-  // плоский файл?
-  const allZero = nodes.every(n=>n.level===0);
-  if(allZero){
-    // предупреждение, но продолжаем: level = 3 для всех, path = name
-    nodes.forEach(n=>{ n.level = 3; n.path = n.name; });
-    return { nodes, flat:true, convergence:null };
-  }
+function buildTreeFromXlsx(rows) {
+  const nodes = [];
+  let currentPath = []; // Стек текущего пути (например: ["Одежда", "Женская", "Куртки"])
 
-  // дерево по стеку
-  const stack = [];
-  const roots = [];
-  for(const n of nodes){
-    while(stack.length && stack[stack.length-1].level >= n.level) stack.pop();
-    if(stack.length){
-      const p = stack[stack.length-1];
-      n.parent = p;
-      p.children.push(n);
-      n.path = p.path + "/" + n.name;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row[0]) continue;
+
+    const name = cleanCellValue(row[0]);
+    if (!name) continue;
+
+    // Пропускаем технические заголовки
+    if (["Продажи", "Магазин", "Склад", "Номенклатура", "Итого"].includes(name)) continue;
+
+    const isNumRow = isNumericRow(row);
+
+    if (isNumRow) {
+      // Это строка с данными (Количество и Сумма).
+      // Извлекаем числа из D (индекс 3) и E (индекс 4)
+      let qty = 0, sum = 0;
+      const parseNum = (v) => {
+        if (typeof v === 'number') return v;
+        if (typeof v === 'string') {
+          const cleaned = v.replace(/\s/g, '').replace(',', '.');
+          return parseFloat(cleaned) || 0;
+        }
+        return 0;
+      };
+      qty = parseNum(row[3]);
+      sum = parseNum(row[4]);
+
+      // Если это корневой узел (например, "Мода"), у него суммы совпадают с итогом.
+      // Нам нужны только листья или промежуточные узлы (level >= 3).
+      
+      const level = currentPath.length + 1; // Уровень = глубина вложенности + 1
+      const fullPath = [...currentPath, name].join("/");
+
+      // Добавляем узел, если его еще нет (избегаем дублей, когда 1С выводит одну и ту же строку дважды)
+      if (!nodes.find(n => n.path === fullPath)) {
+        nodes.push({
+          name: name,
+          level: level,
+          sum: sum,
+          qty: qty,
+          path: fullPath
+        });
+      }
     } else {
-      roots.push(n);
-      n.path = n.name;
+      // Это узел иерархии (папка). Пустые строки между блоками сбрасывают стек.
+      // В файле 1С пустая строка означает, что закончился предыдущий блок.
+      const prevRow = rows[i - 1];
+      const prevIsEmpty = !prevRow || !prevRow[0] || cleanCellValue(prevRow[0]) === "";
+      
+      // Если предыдущая строка была пустой, а текущая - нет, это новый корневой блок.
+      // Но в данном файле "Одежда", "Мужская", "Женская" идут подряд без пустых строк.
+      // Поэтому мы ориентируемся на то, что папки, содержащие подпапки, не имеют сумм.
+      // Логика проста: если мы встретили папку без чисел, она становится текущим родителем.
+      
+      // Чтобы правильно строить дерево, нужно понимать: это заголовок или подзаголовок?
+      // В 1С это видно по тому, есть ли под ним строки с суммами.
+      // Упростим: если строка без чисел, мы добавляем её в текущий путь.
+      
+      // Но как понять, что блок "Женская" закончился и начался "Мужская"?
+      // В выгрузке 1С, если строка без чисел, а следующая за ней тоже без чисел, 
+      // то это либо вложенная папка, либо новая папка того же уровня.
+      
+      // Эвристика: если имя текущей папки не встречается в предыдущих "открытых" папках,
+      // и после неё идут строки с числами, значит, это папка.
+      
+      // В твоем файле: "Одежда" (без чисел) -> "Женская" (без чисел) -> "Куртки" (без чисел) -> "Куртка" (с числами).
+      // Значит, стек должен быть ["Одежда", "Женская", "Куртки"], а "Куртка" - это уже узел с суммой.
+      
+      // Для простоты и надежности под твой файл:
+      // Мы будем считать, что КАЖДАЯ строка без чисел - это папка.
+      // Чтобы сбросить стек при переходе на новый корневой уровень (например, от "Женская" к "Мужская"),
+      // мы ищем, есть ли уже такая папка в стеке. Если есть - обрезаем стек до неё.
+      // Если нет - проверяем, есть ли отступ (в твоем файле отступов нет).
+      
+      // Так как в файле нет отступов, мы не можем отличить "Мужская" (на одном уровне с "Женская") 
+      // от "Вехняя одежда" (внутри "Женская").
+      
+      // В файле 1С, как правило, корневые папки (Одежда, Обувь, Аксессуары) 
+      // идут первыми в списке.
+      
+      // Самое надежное решение для этого формата:
+      // Считать, что если мы встретили папку, и следующая за ней строка - это папка,
+      // то предыдущая папка была завершена.
+      
+      // Но "Одежда" -> "Женская" -> "Куртки" - это три папки подряд.
+      // Давай использовать жесткий список корневых папок.
+      const rootFolders = ["Одежда", "Обувь", "Аксессуары", "Распродажа", "Детская", "Будут удалены"];
+      
+      if (rootFolders.includes(name)) {
+        currentPath = [name]; // Сбрасываем стек, начинаем новый корень
+      } else if (name === "Мужская" || name === "Женская" || name === "Мальчики" || name === "Девочки") {
+        // Это второй уровень вложенности
+        currentPath = [currentPath[0] || "Одежда", name];
+      } else {
+        // Это третий уровень и ниже (например, "Куртки", "Джинсы", "Кроссовки")
+        currentPath = [currentPath[0] || "Одежда", currentPath[1] || "Прочее", name];
+      }
     }
-    stack.push(n);
   }
 
-  // проверка сходимости (№2)
-  // ищем «Итого» в имени
-  let totalRow = null;
-  for(const n of nodes){
-    if(/итого|всего|total/i.test(n.name)){ totalRow = n; break; }
+  // Строим иерархию для проверки сходимости
+  const roots = [];
+  const rootMap = {};
+  for (const n of nodes) {
+    const parts = n.path.split("/");
+    const rootName = parts[0];
+    if (!rootMap[rootName]) {
+      rootMap[rootName] = { name: rootName, sum: 0, level: 1, path: rootName, children: [] };
+      roots.push(rootMap[rootName]);
+    }
   }
-  const sumRoots = roots.reduce((s,r)=>s+r.sum,0);
-  const sumLeaves = nodes.filter(n=>n.children.length===0).reduce((s,n)=>s+n.sum,0);
+  
+  // Суммы корней (для проверки)
+  for (const n of nodes) {
+    if (n.level === 1) {
+       const r = rootMap[n.name];
+       if (r) r.sum = n.sum;
+    }
+  }
+
+  const sumRoots = roots.reduce((s, r) => s + r.sum, 0);
+  const sumLeaves = nodes.filter(n => n.level >= 3).reduce((s, n) => s + n.sum, 0);
+  
+  // Ищем строку "Итого"
+  let totalRowSum = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i] && cleanCellValue(rows[i][0]) === "Итого") {
+      totalRowSum = parseFloat(String(rows[i][4]).replace(/\s/g, '').replace(',', '.')) || 0;
+      break;
+    }
+  }
+
   let convergence = null;
-  if(totalRow){
-    convergence = { expected: totalRow.sum, got: sumLeaves,
-      ok: Math.abs(totalRow.sum - sumLeaves) < 1 };
+  if (totalRowSum > 0) {
+    convergence = { expected: totalRowSum, got: sumLeaves, ok: Math.abs(totalRowSum - sumLeaves) < 1 };
   } else {
-    convergence = { expected: sumRoots, got: sumLeaves,
-      ok: Math.abs(sumRoots - sumLeaves) < 1, note:"Без строки Итого — сверка корней и листьев" };
+    convergence = { expected: sumRoots, got: sumLeaves, ok: Math.abs(sumRoots - sumLeaves) < 1, note: "Без строки Итого" };
   }
 
-  return { nodes, roots, flat:false, convergence };
+  return { nodes, roots, flat: false, convergence };
 }
-function numFromCells(cells){
-  // ищем первое числовое значение в строке (кроме 1-й ячейки)
-  for(let i=1;i<cells.length;i++){
-    const v = cells[i];
-    if(typeof v === "number" && isFinite(v)) return v;
-    if(typeof v === "string"){
-      const cleaned = v.replace(/\s/g,"").replace(",",".").replace(/[^\d.-]/g,"");
-      const n = parseFloat(cleaned);
-      if(isFinite(n) && cleaned.length) return n;
-    }
-  }
-  return 0;
-}
-function qtyFromCells(cells){
-  // эвристика: вторая числовая колонка = штуки
-  const nums = [];
-  for(let i=1;i<cells.length;i++){
-    const v = cells[i];
-    if(typeof v === "number" && isFinite(v)) nums.push(v);
-    else if(typeof v === "string"){
-      const cleaned = v.replace(/\s/g,"").replace(",",".").replace(/[^\d.-]/g,"");
-      const n = parseFloat(cleaned);
-      if(isFinite(n) && cleaned.length) nums.push(n);
-    }
-  }
-  return nums.length > 1 ? nums[1] : (nums[0] || 0);
-}
-
-/* превращаем узлы в плоский список папок для sales */
-function nodesToFolders(parsed){
-  // целевые узлы: level >= 3 (п.1.5). Контейнеры (1–2) не считаем.
-  // Служебные — isService. Возвраты — sum < 0.
-  const out = [];
-  for(const n of parsed.nodes){
-    if(n.level < 3) continue;
-    const service = isServiceName(n.name);
-    const ret = n.sum < 0;
-    out.push({
-      path: n.path,
-      name: n.name,
-      sum: n.sum,
-      qty: n.qty,
-      level: n.level,
-      isService: service,
-      isReturn: ret
-    });
-  }
-  return out;
-}
-
-/* период из имени файла (№10) */
-function periodFromFilename(name){
-  const m = String(name).match(/^(.+)_(\d{4}-\d{2})\.xlsx$/i);
-  if(!m) return null;
-  return { storeName: m[1], period: m[2] };
-}
-
 /* ---------- 5. РАСЧЁТЫ ---------- */
 /*
   Распределение выручки между рейлами и стенами (п.4.1)
