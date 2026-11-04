@@ -388,3 +388,34 @@ const Screens = {
         DB.data = { imports: [], rails: [], links: [], plans: {} };
         await DB.save(); UI.toast('Данные удалены'); App.route('home');
       };
+    }
+
+    const fileInput = document.getElementById('file-upload');
+    document.getElementById('btn-upload').onclick = () => fileInput.click();
+    
+    fileInput.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      UI.toast('Парсинг файла...', 'default');
+      try {
+        const data = await Parser.parse(file);
+        DB.data.imports.unshift(data); // Сохраняем в историю
+        await DB.save();
+        UI.toast(data.valid ? 'Успешно загружено!' : 'Внимание: расхождение в суммах!', data.valid ? 'default' : 'error');
+        App.route('home');
+      } catch (err) {
+        UI.toast('Ошибка чтения файла', 'error');
+      }
+    };
+  }
+};
+
+// ==========================================
+// 5. INIT
+// ==========================================
+DB.init().then(() => {
+  App.init();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+});
