@@ -1,19 +1,12 @@
 {
-  "name": "Рейл-Карта 4.0",
-  "short_name": "Рейл-Карта",
-  "description": "Эффективность метра рейлов для сети магазинов одежды",
+  "name": "Метраж — эффективность торгового пространства",
+  "short_name": "Метраж",
   "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#F3EEE3",
-  "theme_color": "#1F3A2E",
-  "lang": "ru",
+  "background_color": "#f6f7f9",
+  "theme_color": "#0f766e",
   "icons": [
-    {
-      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjEwMCIgZmlsbD0iIzFGM0EyRSIvPjx0ZXh0IHg9IjI1NiIgeT0iMzQwIiBmb250LWZhbWlseT0iQXJpYWwsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyNjAiIGZvbnQtd2VpZ2h0PSI4MDAiIGZpbGw9IiNCN0M5NEEiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlI8L3RleHQ+PC9zdmc+",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
