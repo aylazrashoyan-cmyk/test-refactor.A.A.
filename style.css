@@ -7,6 +7,8 @@
   --accent-dark: #A3CC00;
   --danger: #FF3B30;
   --danger-bg: #FFEBEA;
+  --warn: #FF9500;
+  --warn-bg: #FFF4E5;
   --radius: 28px;
   --shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
   --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -36,6 +38,7 @@ h1, h2, h3, p { margin: 0; }
 .btn:active { transform: scale(0.96); }
 .btn-primary { background: var(--accent); color: var(--text); }
 .btn-secondary { background: var(--bg); color: var(--text); }
+.btn-danger { background: var(--danger-bg); color: var(--danger); }
 
 .progress-wrap { background: var(--bg); height: 8px; border-radius: 4px; overflow: hidden; margin-top: 12px; }
 .progress-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.5s ease; }
@@ -65,6 +68,7 @@ h1, h2, h3, p { margin: 0; }
 
 .tag { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; background: var(--bg); color: var(--text-muted); cursor: pointer;}
 .tag.ok { background: var(--accent); color: var(--text); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
 .tag.err { background: var(--danger-bg); color: var(--danger); }
 
 .toast-container { position: fixed; bottom: 100px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 200; pointer-events: none; }
@@ -76,3 +80,10 @@ h1, h2, h3, p { margin: 0; }
 .modal-root.open { display: flex; }
 .modal-content { background: var(--surface); width: 100%; max-width: 480px; border-radius: 32px 32px 0 0; padding: 32px 24px calc(24px + env(safe-area-inset-bottom)); transform: translateY(100%); transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 .modal-root.open .modal-content { transform: translateY(0); }
+
+.empty-state { text-align: center; padding: 40px 20px; }
+.empty-state h2 { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+.empty-state p { color: var(--text-muted); margin-bottom: 20px; font-size: 14px; }
+
+.input { width: 100%; padding: 14px 18px; border-radius: 16px; border: 2px solid var(--bg); background: var(--bg); font-size: 16px; font-weight: 600; font-family: var(--font); outline: none; transition: 0.2s; }
+.input:focus { border-color: var(--accent); background: var(--surface); }
