@@ -1,4 +1,4 @@
-const CACHE = 'analitik-v4'; // Меняем версию, чтобы сбросить старый кэш
+const CACHE = 'analitik-v5'; // Обновили версию до v5
 const ASSETS = [
   './', 
   './index.html', 
@@ -25,13 +25,12 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
     caches.match(e.request).then(cached => {
-      // Сначала пытаемся взять из сети (чтобы подтянуть свежий код)
       return fetch(e.request).then(res => {
         if (res && res.status === 200) {
           caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         }
         return res;
-      }).catch(() => cached); // Если сети нет — берем из кэша
+      }).catch(() => cached);
     })
   );
 });
