@@ -406,6 +406,32 @@ function buildTreeFromXlsx(rows) {
 
   return { nodes, roots, flat: false, convergence };
 }
+  /* превращаем узлы в плоский список папок для sales */
+function nodesToFolders(parsed){
+  const out = [];
+  for(const n of parsed.nodes){
+    if(n.level < 3) continue;
+    const service = isServiceName(n.name);
+    const ret = n.sum < 0;
+    out.push({
+      path: n.path,
+      name: n.name,
+      sum: n.sum,
+      qty: n.qty,
+      level: n.level,
+      isService: service,
+      isReturn: ret
+    });
+  }
+  return out;
+}
+
+/* период из имени файла (№10) */
+function periodFromFilename(name){
+  const m = String(name).match(/^(.+)_(\d{4}-\d{2})\.xlsx$/i);
+  if(!m) return null;
+  return { storeName: m[1], period: m[2] };
+}
 /* ---------- 5. РАСЧЁТЫ ---------- */
 /*
   Распределение выручки между рейлами и стенами (п.4.1)
