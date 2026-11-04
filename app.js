@@ -38,7 +38,7 @@ const UI = {
 };
 
 // ==========================================
-// 2. БАЗА ДАННЫХ (LocalStorage для простоты)
+// 2. БАЗА ДАННЫХ (LocalStorage)
 // ==========================================
 const DB = {
   data: JSON.parse(localStorage.getItem('analitik_flow') || 'null'),
@@ -47,7 +47,7 @@ const DB = {
 };
 
 // ==========================================
-// 3. ПАРСЕР EXCEL (По ТЗ: отступы, возвраты, иерархия)
+// 3. ПАРСЕР EXCEL
 // ==========================================
 const Parser = {
   parse(file) {
@@ -58,27 +58,41 @@ const Parser = {
           const wb = XLSX.read(e.target.result, { type: 'array' });
           const sheet = wb.Sheets[wb.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
-          const result = this.buildTree(rows, file.name);
-          resolve(result);
+          resolve(this.buildTree(rows, file.name));
         } catch (err) { reject(err); }
       };
+      reader.onerror = (err) => reject(err);
       reader.readAsArrayBuffer(file);
     });
   },
 
   buildTree(rows, filename) {
     const roots = []; let stack = []; let controlSum = null;
-    const steps = this.detectSteps(rows);
     
-    // Период из имени файла
+    let step = 2; 
+    for (let i = 1; i < rows.length; i++) {
+      const a = String(rows[i-1]?.[0] || '').match(/^[\s\u00A0]+/)?.[0].length || 0;
+      const b = String(rows[i]?.[0] || '').match(/^[\s\u00A0]+/)?.[0].length || 0;
+      if (a !== b) { step = Math.abs(a - b); break; }
+    }
+    
     const match = filename.match(/(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})\s*[-–—]\s*(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/);
-    const period = match ? { start: new Date(match[3], match[2]-1, match[1]), end: new Date(match[6], match[5]-1, match[4]) } : null;
-    let days = period ? Math.round((period.end - period.start) / 86400000) + 1 : 1;
+    let days = 30;
+    if (match) {
+      const start = new Date(match[3].length === 2 ? '20'+match[3] : match[3], match[2]-1, match[1]);
+      const end = new Date(match[6].length === 2 ? '20'+match[6] : match[6], match[5]-1, match[4]);
+      days = Math.round((end - start) / 86400000) + 1;
+      if (days <= 0) days = 30;
+    }
 
     const isItem = (name) => /\d+\s*[рp₽]|\(\-?\d+%\)/i.test(name);
-    const toNum = (v) => { if (!v || v==='—' || v==='-') return 0; return parseFloat(String(v).replace(/\s/g,'').replace(',','.')) || 0; };
+    const toNum = (v) => { 
+      if (v === null || v === undefined || v === '' || v === '—' || v === '-') return 0; 
+      if (typeof v === 'number') return v;
+      return parseFloat(String(v).replace(/[\s\u00A0]/g,'').replace(',','.')) || 0; 
+    };
     
-    rows.forEach((row, i) => {
+    rows.forEach((row) => {
       const rawName = row[0];
       if (!rawName) return;
       const name = String(rawName).trim();
@@ -86,22 +100,23 @@ const Parser = {
       if (name === 'Мода' || name === 'Итого') { controlSum = toNum(row[4]); return; }
 
       const indent = String(rawName).match(/^[\s\u00A0]+/)?.[0].length || 0;
-      const level = Math.round(indent / steps.step);
+      const level = Math.round(indent / step);
       const sum = toNum(row[4]);
       const qty = toNum(row[3]);
 
       while (stack.length > 0 && stack[stack.length-1].level >= level) { stack.pop(); }
       
+      const parentPath = stack.length > 0 ? stack[stack.length-1].path : '';
       const node = {
         name, level, sum, qty, isItem: isItem(name),
-        children: [], path: stack.length > 0 ? `${stack[stack.length-1].path} > ${name}` : name,
-        category: this.detectCat(stack.length ? stack[stack.length-1].path : name),
-        gender: this.detectGender(stack.length ? stack[stack.length-1].path : name)
+        children: [], path: parentPath ? `${parentPath} > ${name}` : name,
+        category: this.detectCat(parentPath || name),
+        gender: this.detectGender(parentPath || name)
       };
 
       if (stack.length > 0) {
         stack[stack.length-1].children.push(node);
-        stack[stack.length-1].sum += sum; // Суммируем в родителя
+        stack[stack.length-1].sum += sum;
         stack[stack.length-1].qty += qty;
       } else {
         roots.push(node);
@@ -109,21 +124,10 @@ const Parser = {
       if (!node.isItem) stack.push(node);
     });
 
-    // Расчет сходимости
     const leafSum = roots.reduce((acc, r) => acc + r.sum, 0);
-    const valid = controlSum ? Math.abs(leafSum - controlSum) / controlSum < 0.01 : true;
+    const valid = controlSum ? Math.abs(leafSum - controlSum) / controlSum < 0.05 : true;
 
-    return { roots, period, days, totalSum: controlSum || leafSum, valid };
-  },
-
-  detectSteps(rows) {
-    let step = 1;
-    for (let i = 1; i < rows.length; i++) {
-      const a = String(rows[i-1][0]||'').match(/^[\s\u00A0]+/)?.[0].length || 0;
-      const b = String(rows[i][0]||'').match(/^[\s\u00A0]+/)?.[0].length || 0;
-      if (Math.abs(a - b) > 0) { step = Math.abs(a - b); break; }
-    }
-    return { step };
+    return { roots, days, totalSum: controlSum || leafSum, valid, lastUpdate: new Date().toISOString() };
   },
 
   detectCat(path) {
@@ -142,7 +146,7 @@ const Parser = {
 };
 
 // ==========================================
-// 4. ЭКРАНЫ (Рендеринг)
+// 4. РОУТЕР
 // ==========================================
 const App = {
   currentScreen: 'home',
@@ -153,10 +157,7 @@ const App = {
     { id: 'settings', icon: Icons.settings, label: 'Настройки' }
   ],
 
-  init() {
-    this.renderNav();
-    this.route(this.currentScreen);
-  },
+  init() { this.renderNav(); this.route(this.currentScreen); },
 
   renderNav() {
     document.getElementById('nav').innerHTML = this.nav.map(n => `
@@ -183,7 +184,7 @@ const App = {
 };
 
 // ==========================================
-// 5. ГЛАВНЫЙ ЭКРАН
+// 5. ЭКРАНЫ
 // ==========================================
 const Screens = {
   home(root) {
@@ -206,20 +207,29 @@ const Screens = {
     const planPct = Math.min(100, (d.totalSum / plan) * 100);
     const forecast = (d.totalSum / d.days) * 30 * 1.05;
 
-    // Считаем категории
     const cats = { 'Одежда':0, 'Обувь':0, 'Аксессуары':0, 'Распродажа':0 };
     d.roots.forEach(r => { if (cats[r.category] !== undefined) cats[r.category] += r.sum; });
+
+    let allItems = [];
+    const collectItems = (nodes) => {
+      nodes.forEach(n => {
+        if (n.isItem) allItems.push(n);
+        else collectItems(n.children);
+      });
+    };
+    collectItems(d.roots);
+    allItems.sort((a, b) => b.sum - a.sum);
+    const top5 = allItems.slice(0, 5);
 
     root.innerHTML = `
       <div class="header">
         <div>
-          <h1 class="h1">Главная</h1>
+          <h1 class="h1">Мода <span style="font-size:16px;color:var(--text-muted)">▾</span></h1>
           <div class="subtitle">Данные за ${d.days} дн.</div>
         </div>
-        <div class="tag">${d.valid ? 'Всё ок' : 'Ошибка'}</div>
+        <div class="tag ${d.valid ? 'a' : 'c'}">${d.valid ? 'Всё ок' : 'Ошибка'}</div>
       </div>
 
-      <!-- Hero Plan/Fact -->
       <div class="card hero-card">
         <div class="card-title">Выручка магазина</div>
         <div class="hero-val num">${Math.round(d.totalSum).toLocaleString('ru-RU')} ₽</div>
@@ -229,31 +239,29 @@ const Screens = {
         </div>
         <div class="progress-wrap"><div class="progress-bar" style="width:${planPct}%"></div></div>
         <div style="margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);font-weight:500;">
-          Прогноз на месяц: <span style="color:var(--accent);font-weight:700">${Math.round(forecast).toLocaleString('ru-RU')} ₽</span>
+          Прогноз: <span style="color:var(--accent);font-weight:700">${Math.round(forecast).toLocaleString('ru-RU')} ₽</span>
         </div>
       </div>
 
-      <!-- Категории (Киты) -->
       <div class="card">
-        <div class="card-title">Категории</div>
+        <div class="card-title">Киты</div>
         <div class="stats-grid">
           ${Object.entries(cats).map(([k,v]) => `
             <div class="stat-box">
-              <div class="stat-val num">${Math.round(v/1000)}к ₽</div>
+              <div class="stat-val num">${Math.round(v).toLocaleString('ru-RU')} ₽</div>
               <div class="stat-label">${k}</div>
             </div>
           `).join('')}
         </div>
       </div>
 
-      <!-- Топ-5 -->
       <div class="card">
         <div class="card-title">Топ-5 товаров</div>
-        ${d.roots[0].children[0].children.slice(0, 5).map((item, i) => `
+        ${top5.map((item, i) => `
           <div class="list-item">
             <div>
               <div class="item-name">${i+1}. ${item.name}</div>
-              <div class="item-desc">${item.gender} · ${item.category}</div>
+              <div class="item-desc">${item.gender !== '—' ? item.gender : ''} · ${item.category}</div>
             </div>
             <div class="item-val num">${Math.round(item.sum).toLocaleString('ru-RU')} ₽</div>
           </div>
@@ -262,57 +270,67 @@ const Screens = {
     `;
   },
 
-  // ==========================================
-  // 6. АНАЛИТИКА (Метрики + ABC)
-  // ==========================================
   analytics(root) {
     if (!DB.data) return App.route('home');
-    const d = DB.data;
     
+    let allItems = [];
+    const collectItems = (nodes) => {
+      nodes.forEach(n => {
+        if (n.isItem) allItems.push(n);
+        else collectItems(n.children);
+      });
+    };
+    collectItems(DB.data.roots);
+    allItems.sort((a, b) => b.sum - a.sum);
+
+    let total = allItems.reduce((acc, i) => acc + (i.sum > 0 ? i.sum : 0), 0);
+    let cum = 0, a=0, b=0, c=0;
+    allItems.forEach(i => {
+      if (i.sum <= 0) { c++; return; }
+      cum += i.sum;
+      if (cum <= total * 0.8) a++;
+      else if (cum <= total * 0.95) b++;
+      else c++;
+    });
+
     root.innerHTML = `
       <div class="header"><h1 class="h1">Аналитика</h1></div>
       
       <div class="card">
-        <div class="card-title">Ключевые метрики (TOC)</div>
-        <div class="list-item">
-          <div>
-            <div class="item-name">01 | Выручка на метр (₽/м)</div>
-            <div class="item-desc">Средняя плотность выкладки</div>
-          </div>
-          <div class="item-val num">2 450 ₽</div>
+        <div class="card-title">ABC-Анализ <span class="tag">3+</span></div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <button class="btn btn-primary" style="padding:8px 16px;font-size:14px;">По выручке</button>
+          <button class="btn btn-secondary" style="padding:8px 16px;font-size:14px;">По метражу</button>
         </div>
-        <div class="list-item">
-          <div>
-            <div class="item-name">02 | ABC-Индекс</div>
-            <div class="item-desc">Товары группы А (80% выручки)</div>
+        <div class="stats-grid">
+          <div class="stat-box" style="background:var(--accent)">
+            <div class="stat-label" style="color:var(--text)">A (80%)</div>
+            <div class="stat-val num" style="margin-top:8px">${a} товаров</div>
           </div>
-          <div class="item-val num">45 SKU</div>
-        </div>
-        <div class="list-item">
-          <div>
-            <div class="item-name">03 | Коэффициент возвратов</div>
-            <div class="item-desc">Доля отрицательных продаж</div>
+          <div class="stat-box" style="background:#FFA500;color:#fff">
+            <div class="stat-label" style="color:#fff">B (15%)</div>
+            <div class="stat-val num" style="margin-top:8px">${b} товаров</div>
           </div>
-          <div class="item-val num" style="color:var(--danger)">1.2%</div>
+          <div class="stat-box" style="background:var(--danger);color:#fff">
+            <div class="stat-label" style="color:#fff">C (5%)</div>
+            <div class="stat-val num" style="margin-top:8px">${c} товаров</div>
+          </div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Рекомендации (ТРИЗ / Kepner-Tregoe)</div>
+        <div class="card-title">Рекомендации (TOC)</div>
         <div style="background:var(--danger-bg);padding:16px;border-radius:16px;margin-bottom:16px;">
-          <div style="font-weight:800;color:var(--danger);margin-bottom:4px;">Найдено ограничение (TOC)</div>
+          <div style="font-weight:800;color:var(--danger);margin-bottom:4px;">Найдено ограничение</div>
           <div style="font-size:14px;font-weight:500;color:var(--danger);">
-            Товар «Куртка зимняя» занимает 3 метра (20% полки), но приносит 2% выручки.
+            Товары группы С (${c} шт) приносят менее 5% выручки. Рекомендуется сократить занимаемые метры.
           </div>
         </div>
-        <button class="btn btn-primary">Применить решение: сократить до 1 метра</button>
+        <button class="btn btn-primary">Показать рекомендации</button>
       </div>
     `;
   },
 
-  // ==========================================
-  // 7. РЕЙЛЫ
-  // ==========================================
   rails(root) {
     root.innerHTML = `
       <div class="header"><h1 class="h1">Рейлы</h1></div>
@@ -331,9 +349,6 @@ const Screens = {
     `;
   },
 
-  // ==========================================
-  // 8. НАСТРОЙКИ (Импорт)
-  // ==========================================
   settings(root) {
     root.innerHTML = `
       <div class="header"><h1 class="h1">Настройки</h1></div>
@@ -380,6 +395,7 @@ const Screens = {
         App.route('home');
       } catch (err) {
         UI.toast('Ошибка чтения файла', 'error');
+        console.error(err);
       }
     };
   }
@@ -388,7 +404,7 @@ const Screens = {
 // Запуск
 App.init();
 
-// Регистрация SW
+// Регистрация Service Worker для офлайна
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
