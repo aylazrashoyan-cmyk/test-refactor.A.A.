@@ -1,10 +1,14 @@
-const CACHE = 'analitik-v5'; // Обновили версию до v5
+const CACHE = 'analitik-v6';
 const ASSETS = [
-  './', 
-  './index.html', 
-  './style.css', 
-  './app.js', 
-  './manifest.json'
+  './',
+  './index.html',
+  './style.css',
+  './app.js',
+  './manifest.json',
+  './icons/192.png',
+  './icons/512.png',
+  './icons/192-maskable.png',
+  './icons/512-maskable.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -15,7 +19,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then(keys => 
+    caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
@@ -23,6 +27,8 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  if (!e.request.url.startsWith(self.location.origin)) return; // не кешируем чужое
+
   e.respondWith(
     caches.match(e.request).then(cached => {
       return fetch(e.request).then(res => {
@@ -30,7 +36,10 @@ self.addEventListener('fetch', (e) => {
           caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         }
         return res;
-      }).catch(() => cached);
+      }).catch(() => {
+        // fallback: либо кеш, либо index.html (для навигации), либо 503
+        return cached || caches.match('./index.html') || new Response('Offline', { status: 503 });
+      });
     })
   );
 });
