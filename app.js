@@ -3,7 +3,7 @@
 // ==========================================
 const Icons = {
   home: `<svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
-  chart: `<svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`,
+  chart: `<svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
   rail: `<svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
   settings: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
 };
@@ -79,13 +79,12 @@ const Parser = {
     let controlSum = 0, step = 2;
     let dateMatch = filename.match(/(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})\s*[-–—]\s*(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/);
     
-    // Дефолтные дни (если файл не распознан)
     let daysInPeriod = 30, daysInMonth = 30;
     if (dateMatch) {
       const s = new Date(dateMatch[3].length===2?'20'+dateMatch[3]:dateMatch[3], dateMatch[2]-1, dateMatch[1]);
       const e = new Date(dateMatch[6].length===2?'20'+dateMatch[6]:dateMatch[6], dateMatch[5]-1, dateMatch[4]);
       daysInPeriod = Math.round((e - s)/86400000) + 1;
-      daysInMonth = new Date(s.getFullYear(), s.getMonth()+1, 0).getDate(); // Кол-во дней в целевом месяце
+      daysInMonth = new Date(s.getFullYear(), s.getMonth()+1, 0).getDate();
     }
 
     const toNum = (v) => (typeof v === 'number' ? v : parseFloat(String(v||'').replace(/[\s\u00A0]/g,'').replace(',','.')) || 0);
@@ -188,7 +187,7 @@ const App = {
 const Screens = {
   // --- ГЛАВНАЯ ---
   home(root) {
-    const current = DB.data.imports[0]; // Берем последний импорт
+    const current = DB.data.imports[0];
     if (!current) {
       root.innerHTML = `
         <div class="header"><h1 class="h1">Главная</h1></div>
@@ -204,11 +203,11 @@ const Screens = {
     const planPct = Math.min(100, (current.totalSum / plan) * 100);
     const forecast = (current.totalSum / current.daysInPeriod) * current.daysInMonth * 1.05;
 
-    // Категории (берем только верхние суммы из корней)
+    // КАТЕГОРИИ (берем только корневые папки, чтобы не было двойного счета)
     const cats = { 'Одежда':0, 'Обувь':0, 'Аксессуары':0, 'Распродажа':0 };
     current.roots.forEach(r => { if (cats[r.category] !== undefined) cats[r.category] += r.sum; });
 
-    // Топ-5 папок по полам
+    // ТОП-5 ПАПОК
     let tops = { 'М': [], 'Ж': [], 'Д': [], 'Аксессуары': [] };
     const collect = (nodes) => nodes.forEach(n => {
       if (n.isItem) return;
@@ -247,7 +246,7 @@ const Screens = {
       </div>
 
       <div class="card">
-        <div class="card-title">Категории</div>
+        <div class="card-title">Киты</div>
         <div class="stats-grid">
           ${Object.entries(cats).map(([k,v]) => `
             <div class="stat-box">
@@ -288,7 +287,6 @@ const Screens = {
     const current = DB.data.imports[0];
     if (!current) return App.route('home');
 
-    // Собираем только папки (у которых есть товары)
     let folders = [];
     const collect = (nodes) => nodes.forEach(n => {
       if (n.isItem) return;
@@ -318,7 +316,7 @@ const Screens = {
             <div class="stat-label" style="color:var(--text)">A (80%)</div>
             <div class="stat-val num">${a.length} папок</div>
           </div>
-          <div class="stat-box" style="background:var(--evergreen);color:#fff">
+          <div class="stat-box" style="background:var(--danger);color:#fff">
             <div class="stat-label" style="color:#fff">B (15%)</div>
             <div class="stat-val num">${b.length} папок</div>
           </div>
@@ -329,7 +327,7 @@ const Screens = {
         </div>
         <button class="btn btn-secondary" onclick="document.getElementById('abc-list').style.display = document.getElementById('abc-list').style.display === 'none' ? 'block' : 'none'">Показать списки</button>
         <div id="abc-list" style="display:none; margin-top:16px;">
-          <div style="font-weight:800; margin-bottom:8px; color:var(--accent)">Группа А</div>
+          <div style="font-weight:800; margin-bottom:8px; color:var(--accent-dark)">Группа А</div>
           ${a.map(f => `<div class="list-item"><div class="item-name">${f.name}</div><div class="item-val num">${Math.round(f.sum).toLocaleString('ru-RU')} ₽</div></div>`).join('')}
         </div>
       </div>
@@ -390,34 +388,3 @@ const Screens = {
         DB.data = { imports: [], rails: [], links: [], plans: {} };
         await DB.save(); UI.toast('Данные удалены'); App.route('home');
       };
-    }
-
-    const fileInput = document.getElementById('file-upload');
-    document.getElementById('btn-upload').onclick = () => fileInput.click();
-    
-    fileInput.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      UI.toast('Парсинг файла...', 'default');
-      try {
-        const data = await Parser.parse(file);
-        DB.data.imports.unshift(data); // Сохраняем в историю
-        await DB.save();
-        UI.toast(data.valid ? 'Успешно загружено!' : 'Внимание: расхождение в суммах!', data.valid ? 'default' : 'error');
-        App.route('home');
-      } catch (err) {
-        UI.toast('Ошибка чтения файла', 'error');
-      }
-    };
-  }
-};
-
-// ==========================================
-// 5. INIT
-// ==========================================
-DB.init().then(() => {
-  App.init();
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
-});
