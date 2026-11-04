@@ -1,12 +1,11 @@
 :root {
-  --bg: #EFE7DA; /* Soft Linen (фон) */
+  --bg: #EFE7DA; /* Soft Linen */
   --surface: #FFFFFF;
   --text: #111111;
   --text-muted: #737373;
   --accent: #95C623; /* Yellow Green */
-  --accent-dark: #7ba816;
-  --evergreen: #002626; /* Глубокий зеленый для карточек */
-  --danger: #E55812; /* Cayenne (оранжево-красный вместо кислотного) */
+  --evergreen: #002626; /* Dark Teal */
+  --danger: #E55812; /* Cayenne */
   --danger-bg: #FCEBE2;
   --radius: 24px;
   --shadow: 0 8px 30px rgba(0,0,0,0.06);
@@ -18,14 +17,12 @@ body { margin: 0; background: var(--bg); font-family: var(--font); color: var(--
 h1, h2, h3, p { margin: 0; }
 .num { font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
 
-/* Layout */
 .app { max-width: 480px; margin: 0 auto; min-height: 100vh; position: relative; }
 .screen { padding: 24px 20px 100px; display: flex; flex-direction: column; gap: 16px; }
 .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; }
 .h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.04em; }
 .subtitle { font-size: 15px; font-weight: 500; color: var(--text-muted); }
 
-/* Cards */
 .card { background: var(--surface); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
 .card-title { font-size: 17px; font-weight: 800; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
 
@@ -36,23 +33,21 @@ h1, h2, h3, p { margin: 0; }
 .nav-item.active { color: var(--text); }
 .nav-item.active svg { color: #fff; background: var(--evergreen); border-radius: 12px; padding: 4px; width: 32px; height: 32px; margin: -4px 0; }
 
-/* Buttons */
+/* UI */
 .btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; border-radius: 99px; font-weight: 700; font-size: 16px; border: none; cursor: pointer; transition: transform 0.1s; width: 100%; }
 .btn:active { transform: scale(0.96); }
 .btn-primary { background: var(--accent); color: var(--text); }
 .btn-secondary { background: #F3F4F6; color: var(--text); }
+.btn-danger { background: var(--danger-bg); color: var(--danger); }
 
-/* Progress Bar */
 .progress-wrap { background: rgba(255,255,255,0.1); height: 8px; border-radius: 4px; overflow: hidden; margin-top: 12px; }
 .progress-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.5s ease; }
 
-/* Stats & Kits */
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .stat-box { background: #F9FAFB; padding: 16px; border-radius: 20px; }
 .stat-val { font-size: 20px; font-weight: 800; }
 .stat-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-top: 4px; }
 
-/* Lists */
 .list-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #F3F4F6; }
 .list-item:last-child { border-bottom: none; padding-bottom: 0; }
 .list-item:first-child { padding-top: 0; }
@@ -60,23 +55,20 @@ h1, h2, h3, p { margin: 0; }
 .item-desc { font-size: 13px; color: var(--text-muted); margin-top: 2px; font-weight: 500; }
 .item-val { font-weight: 800; font-size: 16px; }
 
-/* Tabs */
 .tabs { display: flex; gap: 6px; background: #F3F4F6; padding: 4px; border-radius: 99px; margin-bottom: 16px; overflow-x: auto; }
 .tab { flex: 1; text-align: center; padding: 10px; border-radius: 99px; font-size: 13px; font-weight: 700; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
 .tab.active { background: var(--surface); color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 
-/* Hero Card (Evergreen) */
 .hero-card { background: var(--evergreen); color: #fff; }
 .hero-card .card-title { color: rgba(255,255,255,0.6); }
 .hero-val { font-size: 44px; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 8px; }
 .hero-meta { display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.6); margin-bottom: 8px; }
 
-/* Tags & Errors */
 .tag { display: inline-block; padding: 6px 12px; border-radius: 10px; font-size: 13px; font-weight: 700; background: #F3F4F6; color: var(--text-muted); cursor: pointer; }
 .tag.ok { background: var(--accent); color: var(--text); }
 .tag.err { background: var(--danger-bg); color: var(--danger); }
 
-/* Modal, Toast, Empty */
+/* Toast & Modal */
 .toast-container { position: fixed; bottom: 100px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 200; pointer-events: none; }
 .toast { background: var(--evergreen); color: #fff; padding: 14px 24px; border-radius: 99px; font-size: 14px; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,0.2); transform: translateY(20px); opacity: 0; transition: 0.3s; }
 .toast.show { transform: translateY(0); opacity: 1; }
