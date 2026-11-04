@@ -38,12 +38,54 @@ const UI = {
 };
 
 // ==========================================
-// 2. БАЗА ДАННЫХ (LocalStorage)
+// 2. БАЗА ДАННЫХ (IndexedDB)
 // ==========================================
 const DB = {
-  data: JSON.parse(localStorage.getItem('analitik_flow') || 'null'),
-  save() { localStorage.setItem('analitik_flow', JSON.stringify(this.data)); },
-  clear() { this.data = null; localStorage.removeItem('analitik_flow'); }
+  dbName: 'analitik_flow_db',
+  storeName: 'data_store',
+  data: null,
+
+  async init() {
+    return new Promise((resolve) => {
+      const req = indexedDB.open(this.dbName, 1);
+      req.onupgradeneeded = (e) => e.target.result.createObjectStore(this.storeName);
+      req.onsuccess = (e) => {
+        const db = e.target.result;
+        const tx = db.transaction(this.storeName, 'readonly');
+        const getReq = tx.objectStore(this.storeName).get('current_data');
+        getReq.onsuccess = () => { this.data = getReq.result || null; resolve(); };
+        getReq.onerror = () => resolve();
+      };
+      req.onerror = () => resolve();
+    });
+  },
+
+  async save(data) {
+    this.data = data;
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(this.dbName, 1);
+      req.onsuccess = (e) => {
+        const db = e.target.result;
+        const tx = db.transaction(this.storeName, 'readwrite');
+        tx.objectStore(this.storeName).put(data, 'current_data');
+        tx.oncomplete = () => resolve();
+        tx.onerror = (err) => reject(err);
+      };
+    });
+  },
+
+  async clear() {
+    this.data = null;
+    return new Promise((resolve) => {
+      const req = indexedDB.open(this.dbName, 1);
+      req.onsuccess = (e) => {
+        const db = e.target.result;
+        const tx = db.transaction(this.storeName, 'readwrite');
+        tx.objectStore(this.storeName).delete('current_data');
+        tx.oncomplete = () => resolve();
+      };
+    });
+  }
 };
 
 // ==========================================
@@ -69,6 +111,7 @@ const Parser = {
   buildTree(rows, filename) {
     const roots = []; let stack = []; let controlSum = null;
     
+    // 1. Определяем шаг отступа
     let step = 2; 
     for (let i = 1; i < rows.length; i++) {
       const a = String(rows[i-1]?.[0] || '').match(/^[\s\u00A0]+/)?.[0].length || 0;
@@ -76,6 +119,7 @@ const Parser = {
       if (a !== b) { step = Math.abs(a - b); break; }
     }
     
+    // 2. Парсим даты из имени файла
     const match = filename.match(/(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})\s*[-–—]\s*(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/);
     let days = 30;
     if (match) {
@@ -92,6 +136,7 @@ const Parser = {
       return parseFloat(String(v).replace(/[\s\u00A0]/g,'').replace(',','.')) || 0; 
     };
     
+    // 3. Строим дерево
     rows.forEach((row) => {
       const rawName = row[0];
       if (!rawName) return;
@@ -375,7 +420,7 @@ const Screens = {
     if (DB.data) {
       document.getElementById('btn-clear').onclick = async () => {
         if (await UI.confirm('Очистить данные?', 'Все данные магазина будут удалены.')) {
-          DB.clear(); UI.toast('Данные удалены'); App.route('home');
+          await DB.clear(); UI.toast('Данные удалены'); App.route('home');
         }
       };
     }
@@ -389,8 +434,7 @@ const Screens = {
       UI.toast('Парсинг файла...', 'default');
       try {
         const data = await Parser.parse(file);
-        DB.data = data;
-        DB.save();
+        await DB.save(data);
         UI.toast(data.valid ? 'Успешно загружено!' : 'Внимание: расхождение в суммах!', data.valid ? 'default' : 'error');
         App.route('home');
       } catch (err) {
@@ -401,10 +445,14 @@ const Screens = {
   }
 };
 
-// Запуск
-App.init();
-
-// Регистрация Service Worker для офлайна
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
-}
+// ==========================================
+// 6. ИНИЦИАЛИЗАЦИЯ И ЗАПУСК
+// ==========================================
+DB.init().then(() => {
+  App.init();
+  
+  // Регистрация Service Worker для офлайна
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+});
