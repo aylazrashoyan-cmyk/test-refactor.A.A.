@@ -344,4 +344,218 @@ const Screens = {
             <div class="item-name">${i + 1}. ${item.name}</div>
             <div class="item-desc">${item.path.split(' > ').slice(-2).join(' · ')}</div>
           </div>
-          <div class="item-val num ${item.sum < 0 ? 'neg' : ''}">${Math.round(item.sum).to
+          <div class="item-val num ${item.sum < 0 ? 'neg' : ''}">${Math.round(item.sum).toLocaleString('ru-RU')} ₽</div>
+        </div>
+      `).join('');
+    };
+
+    window.switchTop = (g, el) => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('top-list').innerHTML = window.renderTop(g);
+    };
+
+    document.getElementById('top-list').innerHTML = window.renderTop('М');
+
+    if (!current.valid) {
+      document.getElementById('err-tag').onclick = () => {
+        const em = current.errorMsg;
+        UI.modal(`
+          <h2 style="font-size:24px;font-weight:800;margin-bottom:12px;color:var(--danger)">Ошибка в файле</h2>
+          <p style="color:var(--text-muted);font-size:16px;margin-bottom:24px;">
+            Итог по товарам (${em.leaves.toLocaleString('ru-RU')} ₽) не совпадает с итогом магазина (${em.control.toLocaleString('ru-RU')} ₽).
+            Проверьте выгрузку из 1С.
+          </p>
+          <button class="btn btn-primary" onclick="UI.closeModal()">Понятно</button>
+        `);
+      };
+    }
+  },
+
+  analytics(root) {
+    const current = DB.data.imports[0];
+    if (!current) return App.route('home');
+
+    let folders = [];
+    const collect = (nodes) => nodes.forEach(n => {
+      if (n.isItem) return;
+      if (n.children.length === 0 || n.children.every(c => c.isItem)) folders.push(n);
+      else collect(n.children);
+    });
+    collect(current.roots);
+
+    const positive = folders.filter(f => f.sum > 0).sort((a, b) => b.sum - a.sum);
+    const zeroOrNeg = folders.filter(f => f.sum <= 0);
+
+    const total = positive.reduce((acc, f) => acc + f.sum, 0);
+    let cum = 0;
+    const a = [], b = [], c = [];
+    positive.forEach(f => {
+      cum += f.sum;
+      if (cum <= total * 0.8) a.push(f);
+      else if (cum <= total * 0.95) b.push(f);
+      else c.push(f);
+    });
+
+    root.innerHTML = `
+      <div class="header"><h1 class="h1">Аналитика</h1></div>
+
+      <div class="card">
+        <div class="card-title">ABC-Анализ папок</div>
+        <div class="stats-grid" style="margin-bottom:12px;">
+          <div class="stat-box" style="background:var(--accent)">
+            <div class="stat-label" style="color:var(--text)">A (80%)</div>
+            <div class="stat-val num">${a.length} папок</div>
+          </div>
+          <div class="stat-box" style="background:var(--danger);color:#fff">
+            <div class="stat-label" style="color:#fff">B (15%)</div>
+            <div class="stat-val num">${b.length} папок</div>
+          </div>
+          <div class="stat-box" style="background:var(--danger-bg);color:var(--danger)">
+            <div class="stat-label" style="color:var(--danger)">C (5%)</div>
+            <div class="stat-val num">${c.length} папок</div>
+          </div>
+          <div class="stat-box" style="background:var(--warn-bg);color:var(--warn)">
+            <div class="stat-label" style="color:var(--warn)">Z (возвраты)</div>
+            <div class="stat-val num">${zeroOrNeg.length}</div>
+          </div>
+        </div>
+        <button class="btn btn-secondary" id="btn-abc">Показать списки</button>
+        <div id="abc-list" style="display:none; margin-top:16px;">
+          ${this.renderGroup('Группа А', a)}
+          ${this.renderGroup('Группа B', b)}
+          ${this.renderGroup('Группа C', c)}
+          ${zeroOrNeg.length ? this.renderGroup('Группа Z (возвраты)', zeroOrNeg, 'var(--warn)') : ''}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Рекомендации (TOC)</div>
+        ${c.length ? `
+        <div style="background:var(--danger-bg);padding:16px;border-radius:16px;margin-bottom:16px;">
+          <div style="font-weight:800;color:var(--danger);margin-bottom:4px;">Найдено ограничение</div>
+          <div style="font-size:14px;font-weight:500;color:var(--danger);">
+            ${c.length} папок приносят менее 5% выручки. Рекомендуется сократить их метраж.
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-rec">Показать рекомендации</button>
+        <div id="rec-list" style="display:none; margin-top:16px;">
+          ${c.slice(0, 5).map(f => `<div class="list-item"><div class="item-name">${f.name}</div><div class="item-val" style="color:var(--danger)">Сократить метр</div></div>`).join('')}
+        </div>` : `<p style="color:var(--text-muted);font-size:14px;">Ограничений не найдено.</p>`}
+      </div>
+    `;
+
+    document.getElementById('btn-abc').onclick = () => {
+      const el = document.getElementById('abc-list');
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    };
+    const btnRec = document.getElementById('btn-rec');
+    if (btnRec) btnRec.onclick = () => {
+      const el = document.getElementById('rec-list');
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    };
+  },
+
+  renderGroup(title, arr, color = 'var(--accent-dark)') {
+    if (!arr.length) return '';
+    return `
+      <div style="font-weight:800; margin:16px 0 8px; color:${color}">${title} (${arr.length})</div>
+      ${arr.map(f => `<div class="list-item"><div class="item-name">${f.name}</div><div class="item-val num ${f.sum < 0 ? 'neg' : ''}">${Math.round(f.sum).toLocaleString('ru-RU')} ₽</div></div>`).join('')}
+    `;
+  },
+
+  rails(root) {
+    root.innerHTML = `
+      <div class="header"><h1 class="h1">Рейлы</h1></div>
+      <div class="card empty-state">
+        <h2>В разработке</h2>
+        <p>Чтобы считать эффективность рейлов (₽/м), нужно загрузить карту рейлов и привязать к ним товары.</p>
+      </div>
+    `;
+  },
+
+  settings(root) {
+    const planKey = new Date().toISOString().slice(0, 7);
+    const currentPlan = DB.data.plans[planKey] || '';
+
+    root.innerHTML = `
+      <div class="header"><h1 class="h1">Настройки</h1></div>
+
+      <div class="card">
+        <div class="card-title">План на месяц</div>
+        <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px;font-weight:500;">
+          Введите плановую выручку на текущий месяц.
+        </p>
+        <input type="number" class="input" id="plan-input" placeholder="Например, 1000000" value="${currentPlan}">
+        <button class="btn btn-primary" style="margin-top:12px" id="btn-save-plan">Сохранить план</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Данные 1С</div>
+        <p style="font-size:14px;color:var(--text-muted);margin-bottom:20px;font-weight:500;">
+          Загрузите .xlsx файл.
+        </p>
+        <input type="file" id="file-upload" accept=".xlsx" style="display:none">
+        <button class="btn btn-primary" id="btn-upload">Загрузить .xlsx</button>
+        ${DB.data.imports.length ? `<button class="btn btn-danger" style="margin-top:12px" id="btn-clear">Очистить все данные</button>` : ''}
+      </div>
+    `;
+
+    document.getElementById('btn-save-plan').onclick = async () => {
+      const val = parseFloat(document.getElementById('plan-input').value) || 0;
+      DB.data.plans[planKey] = val;
+      await DB.save();
+      UI.toast('План сохранён');
+    };
+
+    if (DB.data.imports.length) {
+      document.getElementById('btn-clear').onclick = async () => {
+        UI.modal(`
+          <h2 style="font-size:20px;font-weight:800;margin-bottom:12px;">Очистить данные?</h2>
+          <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">Все загруженные отчёты будут удалены.</p>
+          <button class="btn btn-danger" onclick="window.confirmClear()">Да, удалить</button>
+          <button class="btn btn-secondary" style="margin-top:8px" onclick="UI.closeModal()">Отмена</button>
+        `);
+      };
+    }
+
+    window.confirmClear = async () => {
+      DB.data = { imports: [], rails: [], links: [], plans: {} };
+      await DB.save();
+      UI.closeModal();
+      UI.toast('Данные удалены');
+      App.route('home');
+    };
+
+    const fileInput = document.getElementById('file-upload');
+    document.getElementById('btn-upload').onclick = () => fileInput.click();
+
+    fileInput.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      UI.toast('Парсинг файла...');
+      try {
+        const data = await Parser.parse(file);
+        DB.data.imports.unshift(data);
+        await DB.save();
+        UI.toast(data.valid ? 'Успешно загружено' : 'Внимание: расхождение в суммах', data.valid ? 'default' : 'error');
+        App.route('home');
+      } catch (err) {
+        UI.toast('Ошибка чтения файла', 'error');
+      }
+    };
+  }
+};
+
+// ==========================================
+// 5. INIT
+// ==========================================
+window.App = App;
+window.UI = UI;
+
+DB.init().then(() => {
+  App.init();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+});
