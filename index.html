@@ -2,1411 +2,1587 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#1F3A2E">
-<title>Рейл-Карта 4.0</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f766e">
+<title>Метраж</title>
 <link rel="manifest" href="manifest.json">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-:root{
-  --linen:#F3EEE3;
-  --linen-2:#EAE3D3;
-  --evergreen:#1F3A2E;
-  --evergreen-2:#2E5442;
-  --yellow-green:#B7C94A;
-  --cayenne:#D9612E;
-  --cayenne-soft:#F0B79A;
-  --text:#1B1B1B;
-  --muted:#6B6B6B;
-  --white:#FFFFFF;
-  --red:#C0392B;
-  --radius:18px;
-  --shadow:0 6px 22px rgba(31,58,46,.10);
-}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;background:var(--linen);color:var(--text);font-family:'Urbanist',-apple-system,BlinkMacSystemFont,sans-serif;font-size:16px;-webkit-font-smoothing:antialiased}
-body{padding-bottom:env(safe-area-inset-bottom)}
-h1,h2,h3,h4{margin:0 0 .4em;font-weight:800;letter-spacing:-.02em}
-h1{font-size:28px}h2{font-size:22px}h3{font-size:18px}h4{font-size:16px}
-p{margin:0 0 .8em;line-height:1.45}
-button{font-family:inherit;cursor:pointer;border:none;border-radius:12px;font-size:15px;font-weight:700;padding:12px 16px;transition:transform .06s,opacity .15s}
-button:active{transform:scale(.97)}
-button:disabled{opacity:.5;cursor:not-allowed}
-.btn-primary{background:var(--evergreen);color:#fff}
-.btn-accent{background:var(--yellow-green);color:var(--evergreen)}
-.btn-warn{background:var(--cayenne);color:#fff}
-.btn-ghost{background:transparent;color:var(--evergreen);border:2px solid var(--evergreen)}
-.btn-ghost-light{background:rgba(255,255,255,.14);color:#fff;border:1.5px solid rgba(255,255,255,.35)}
-.btn-sm{padding:8px 12px;font-size:13px;border-radius:10px}
-.card{background:var(--white);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
-.muted{color:var(--muted);font-size:13px}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.row-between{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-input,select{font-family:inherit;font-size:15px;padding:11px 12px;border:1.5px solid var(--linen-2);border-radius:12px;background:#fff;color:var(--text);width:100%;outline:none}
-input:focus,select:focus{border-color:var(--evergreen)}
-label.field{display:block;margin-bottom:10px;font-size:13px;font-weight:600;color:var(--muted)}
-label.field input,label.field select{margin-top:5px}
-.hidden{display:none!important}
-.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--linen-2);color:var(--evergreen)}
-
-/* PIN */
-#pinScreen{position:fixed;inset:0;background:linear-gradient(160deg,var(--evergreen),#0F1F18);display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:9000;padding:24px;text-align:center;color:#fff}
-#pinScreen h1{color:#fff;margin-bottom:6px}
-#pinScreen .sub{color:rgba(255,255,255,.7);margin-bottom:28px;font-size:14px}
-#pinDots{display:flex;gap:14px;margin-bottom:26px}
-.pin-dot{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.5);transition:.15s}
-.pin-dot.filled{background:var(--yellow-green);border-color:var(--yellow-green);transform:scale(1.1)}
-#pinPad{display:grid;grid-template-columns:repeat(3,70px);gap:14px}
-.pin-key{width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.08);color:#fff;font-size:22px;font-weight:700;border:1.5px solid rgba(255,255,255,.15)}
-.pin-key:active{background:rgba(255,255,255,.2)}
-#pinError{color:#FF8A6B;margin-top:16px;font-size:13px;font-weight:600;min-height:18px}
-
-/* Shell */
-#app{max-width:820px;margin:0 auto;padding:16px 16px 96px}
-header.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-header.top .brand{display:flex;align-items:center;gap:10px}
-header.top .logo{width:38px;height:38px;border-radius:12px;background:var(--evergreen);color:var(--yellow-green);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
-header.top .title{font-size:17px;font-weight:800;line-height:1.1}
-header.top .title small{display:block;font-size:11px;color:var(--muted);font-weight:600}
-
-/* Store selector */
-.store-bar{background:var(--evergreen);color:#fff;border-radius:var(--radius);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;box-shadow:var(--shadow)}
-.store-bar select{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.2);font-weight:700;width:auto;min-width:150px}
-.store-bar select option{color:#000}
-
-/* Metrics */
-.metric{background:var(--white);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
-.metric .k{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.05}
-.metric .l{font-size:12px;color:var(--muted);font-weight:600;margin-top:4px}
-.metric.accent{background:var(--evergreen);color:#fff}
-.metric.accent .l{color:rgba(255,255,255,.6)}
-
-/* Rail card */
-.rail-card{background:var(--white);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);margin-bottom:12px;border-left:6px solid var(--linen-2);cursor:pointer;transition:.15s}
-.rail-card:active{transform:scale(.995)}
-.rail-card.hot{border-left-color:var(--yellow-green)}
-.rail-card.mid{border-left-color:var(--cayenne)}
-.rail-card.cold{border-left-color:var(--red)}
-.rail-card .rc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.rail-card .rc-name{font-weight:800;font-size:16px}
-.rail-card .rc-folder{font-size:13px;color:var(--muted);margin-top:2px}
-.rail-card .rc-val{text-align:right;white-space:nowrap}
-.rail-card .rc-val .num{font-weight:800;font-size:20px;letter-spacing:-.02em}
-.rail-card .rc-val .per{font-size:11px;color:var(--muted);font-weight:600}
-
-/* tabs */
-.tabs{position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--linen-2);display:flex;justify-content:space-around;padding:8px 4px calc(8px + env(safe-area-inset-bottom));z-index:500;box-shadow:0 -6px 22px rgba(0,0,0,.05)}
-.tab{flex:1;text-align:center;padding:6px 2px;border-radius:12px;color:var(--muted);font-size:11px;font-weight:700;background:none}
-.tab .ico{font-size:19px;display:block;margin-bottom:2px}
-.tab.active{color:var(--evergreen);background:var(--linen)}
-
-/* section header */
-.sec-head{display:flex;justify-content:space-between;align-items:center;margin:20px 0 12px}
-.sec-head h2{margin:0}
-.sec-head .muted{font-weight:600}
-
-/* Donut legend */
-.legend{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.legend-item{display:flex;align-items:center;gap:10px;font-size:14px}
-.legend-dot{width:12px;height:12px;border-radius:4px;flex-shrink:0}
-.legend-item .val{margin-left:auto;font-weight:800}
-
-/* Table */
-.tbl{width:100%;border-collapse:collapse;font-size:13px}
-.tbl th,.tbl td{padding:9px 8px;text-align:left;border-bottom:1px solid var(--linen-2)}
-.tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
-.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
-.tbl tr:last-child td{border-bottom:none}
-
-/* modal */
-.modal-back{position:fixed;inset:0;background:rgba(15,31,24,.55);z-index:8000;display:flex;align-items:flex-end;justify-content:center;padding:0}
-.modal{background:var(--linen);width:100%;max-width:820px;border-radius:22px 22px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));max-height:92vh;overflow-y:auto;animation:slideUp .22s ease}
-@keyframes slideUp{from{transform:translateY(40px);opacity:.6}to{transform:translateY(0);opacity:1}}
-.modal h3{margin-bottom:14px}
-.modal .close-x{float:right;background:var(--linen-2);color:var(--evergreen);width:34px;height:34px;border-radius:50%;font-size:18px;font-weight:700;padding:0;display:flex;align-items:center;justify-content:center}
-.form-actions{display:flex;gap:10px;margin-top:16px}
-.form-actions button{flex:1}
-.toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--evergreen);color:#fff;padding:12px 20px;border-radius:14px;font-weight:700;font-size:14px;z-index:9500;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;transition:.25s;pointer-events:none}
-.toast.show{opacity:1;bottom:110px}
-
-.empty{text-align:center;padding:34px 16px;color:var(--muted)}
-.empty .big{font-size:44px;margin-bottom:8px}
-
-.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--linen-2);font-size:13px;font-weight:700;color:var(--evergreen)}
-.chip .x{cursor:pointer;font-weight:800;color:var(--cayenne);font-size:15px}
-
-.big-num{font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.05}
-.stat-row{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--linen-2)}
-.stat-row:last-child{border-bottom:none}
-.stat-row .lab{font-size:13px;color:var(--muted);font-weight:600}
-.stat-row .v{font-weight:800;font-size:15px}
-
-select.store-select-inline{max-width:200px}
+  :root{
+    --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280; --line:#e5e7eb;
+    --emerald:#0f766e; --emerald-l:#d1fae5; --red:#dc2626; --red-l:#fee2e2;
+    --amber:#d97706; --amber-l:#fef3c7; --blue:#2563eb; --gray:#9ca3af;
+    --radius:14px; --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    font-size:15px;line-height:1.4}
+  #app{max-width:720px;margin:0 auto;padding-bottom:88px;min-height:100vh}
+  header.top{position:sticky;top:0;background:var(--bg);padding:14px 16px 8px;z-index:50;
+    border-bottom:1px solid var(--line)}
+  header.top h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.02em}
+  header.top .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .store-btn{cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .store-btn:after{content:"▾";font-size:12px;color:var(--muted)}
+  main{padding:12px 16px}
+  .card{background:var(--card);border-radius:var(--radius);padding:14px;
+    box-shadow:var(--shadow);margin-bottom:12px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--muted);margin:0 0 10px;font-weight:600}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .big{font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .emerald{color:var(--emerald)} .red{color:var(--red)} .muted{color:var(--muted)}
+  .small{font-size:12px} .tiny{font-size:11px}
+  .progress{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:8px}
+  .progress>i{display:block;height:100%;border-radius:4px;transition:width .3s}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .kit{background:var(--bg);border-radius:10px;padding:10px}
+  .kit b{display:block;font-size:15px;margin-top:2px}
+  .kit .share{font-size:11px;color:var(--muted)}
+  .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px}
+  .bar>i{display:block;height:100%}
+  .list-item{padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer}
+  .list-item:last-child{border-bottom:0}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;
+    background:var(--bg);color:var(--muted)}
+  .pill.hot{background:var(--emerald-l);color:var(--emerald)}
+  .pill.cold{background:var(--red-l);color:var(--red)}
+  .pill.mid{background:var(--amber-l);color:var(--amber)}
+  .tabs{display:flex;gap:4px;margin:10px 0}
+  .tabs button{flex:1;padding:8px;border:0;background:var(--card);border-radius:10px;
+    font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
+  .tabs button.active{background:var(--emerald);color:#fff}
+  nav.bottom{position:fixed;bottom:0;left:0;right:0;background:var(--card);
+    border-top:1px solid var(--line);display:flex;max-width:720px;margin:0 auto;
+    z-index:60;padding-bottom:env(safe-area-inset-bottom)}
+  nav.bottom button{flex:1;border:0;background:none;padding:10px 0 12px;
+    display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;
+    color:var(--muted);cursor:pointer}
+  nav.bottom button.active{color:var(--emerald);font-weight:600}
+  nav.bottom svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.75}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:10px 14px;border:0;border-radius:10px;background:var(--emerald);color:#fff;
+    font-size:14px;font-weight:600;cursor:pointer}
+  .btn.ghost{background:var(--bg);color:var(--text)}
+  .btn.danger{background:var(--red)}
+  .btn.sm{padding:6px 10px;font-size:12px}
+  .btn.block{width:100%}
+  .input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;
+    font-size:14px;background:#fff;color:var(--text)}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;
+    display:flex;align-items:flex-end;justify-content:center}
+  .modal{background:var(--card);border-radius:16px 16px 0 0;width:100%;max-width:720px;
+    max-height:88vh;overflow:auto;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+  .modal h3{margin:0 0 10px;font-size:18px}
+  .modal .close{position:absolute;right:16px;top:14px;border:0;background:none;
+    font-size:20px;color:var(--muted);cursor:pointer}
+  .hidden{display:none!important}
+  .heat-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 6px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .empty{color:var(--muted);text-align:center;padding:24px;font-size:14px}
+  .search{position:relative}
+  .search-list{max-height:240px;overflow:auto;margin-top:6px;border:1px solid var(--line);
+    border-radius:10px}
+  .search-list .it{padding:10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+  .search-list .it:hover{background:var(--bg)}
+  .spinner{width:20px;height:20px;border:2px solid var(--line);border-top-color:var(--emerald);
+    border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
-
-<!-- ================= PIN SCREEN ================= -->
-<div id="pinScreen">
-  <div class="logo" style="width:56px;height:56px;border-radius:16px;background:var(--yellow-green);color:var(--evergreen);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;margin-bottom:14px">R</div>
-  <h1>Рейл-Карта 4.0</h1>
-  <div class="sub">Введите PIN-код для доступа</div>
-  <div id="pinDots"></div>
-  <div id="pinPad"></div>
-  <div id="pinError"></div>
+<div id="app">
+  <header class="top" id="top"></header>
+  <main id="main"></main>
+  <nav class="bottom" id="nav"></nav>
 </div>
-
-<!-- ================= APP ================= -->
-<div id="app" class="hidden">
-  <header class="top">
-    <div class="brand">
-      <div class="logo">R</div>
-      <div class="title">Рейл-Карта<small>4.0 · эффективность метра</small></div>
-    </div>
-    <button class="btn-sm btn-ghost" id="btnSettingsTop">⚙️</button>
-  </header>
-
-  <!-- Store bar -->
-  <div class="store-bar" id="storeBar">
-    <div>
-      <div style="font-size:11px;opacity:.7;font-weight:600">Магазин</div>
-      <select id="storeSelect" class="store-select-inline"></select>
-    </div>
-    <button class="btn-sm btn-ghost-light" id="btnAddStore">+ Магазин</button>
-  </div>
-
-  <!-- ================= VIEW: RAILS ================= -->
-  <div id="view-rails">
-    <div class="grid2" style="margin-bottom:14px">
-      <div class="metric accent">
-        <div class="k" id="mRevenue">0 ₽</div>
-        <div class="l">Выручка магазина</div>
-      </div>
-      <div class="metric">
-        <div class="k" id="mPerMeter">0 ₽</div>
-        <div class="l">Выручка на метр (сред.)</div>
-      </div>
-    </div>
-    <div class="grid3" style="margin-bottom:6px">
-      <div class="metric" style="padding:12px"><div class="k" id="mRails" style="font-size:22px">0</div><div class="l">рейлов</div></div>
-      <div class="metric" style="padding:12px"><div class="k" id="mMeters" style="font-size:22px">0</div><div class="l">метров</div></div>
-      <div class="metric" style="padding:12px"><div class="k" id="mTables" style="font-size:22px">0</div><div class="l">столов</div></div>
-    </div>
-
-    <div class="sec-head">
-      <h2>Эффективность рейлов</h2>
-      <button class="btn-sm btn-primary" id="btnAddRail">+ Рейл</button>
-    </div>
-    <div id="railList"></div>
-
-    <!-- Tables -->
-    <div class="sec-head">
-      <h2>Столы</h2>
-      <button class="btn-sm btn-primary" id="btnAddTable">+ Стол</button>
-    </div>
-    <div id="tableList"></div>
-  </div>
-
-  <!-- ================= VIEW: DASHBOARD ================= -->
-  <div id="view-dash" class="hidden">
-    <div class="card">
-      <h3>Выручка магазина</h3>
-      <div class="big-num" id="dashRevenue">0 ₽</div>
-      <div class="muted" id="dashRevenueSub">—</div>
-      <div style="margin-top:14px" id="donutWrap"></div>
-      <div class="legend" id="donutLegend"></div>
-    </div>
-    <div class="card">
-      <h3>Топ папок по выручке</h3>
-      <div id="dashTopFolders"></div>
-    </div>
-    <div class="card">
-      <h3>Столы (визуальная заметка)</h3>
-      <div class="muted" style="margin-bottom:10px">Не участвуют в расчёте выручки на метр</div>
-      <div id="dashTables"></div>
-    </div>
-  </div>
-
-  <!-- ================= VIEW: PARETO ================= -->
-  <div id="view-pareto" class="hidden">
-    <div class="card">
-      <h3>Правило Парето (20/80)</h3>
-      <div class="muted">Рейлы, приносящие 80% выручки магазина</div>
-      <div id="paretoTop" style="margin-top:14px"></div>
-    </div>
-    <div class="card">
-      <h3>Балласт (0–5% вклад)</h3>
-      <div id="paretoBallast"></div>
-    </div>
-  </div>
-
-  <!-- ================= VIEW: BEFORE/AFTER ================= -->
-  <div id="view-beforeafter" class="hidden">
-    <div class="card">
-      <h3>Тест перестановки</h3>
-      <div class="muted" style="margin-bottom:12px">Зафиксируйте дату перестановки — приложение сравнит 7 дней ДО и 7 дней ПОСЛЕ (суббота к субботе).</div>
-      <button class="btn-accent" id="btnFixMove" style="width:100%">📌 Зафиксировать перестановку</button>
-      <div id="lastMoveInfo" class="muted" style="margin-top:10px;text-align:center"></div>
-    </div>
-    <div class="card">
-      <h3>Сравнение по рейлам</h3>
-      <div id="baList"></div>
-    </div>
-  </div>
-
-  <!-- ================= VIEW: NETWORK ================= -->
-  <div id="view-network" class="hidden">
-    <div class="card">
-      <h3>Сеть: магазины × папки</h3>
-      <div class="muted" style="margin-bottom:12px">Выручка по папкам (только рейлы, столы не в счёт)</div>
-      <div style="overflow-x:auto"><div id="networkTable"></div></div>
-    </div>
-    <div class="card">
-      <h3>Рейтинг магазинов</h3>
-      <div id="storeRating"></div>
-    </div>
-  </div>
-
-  <!-- ================= VIEW: STOPLIST ================= -->
-  <div id="view-stop" class="hidden">
-    <div class="card">
-      <h3>Стоп-лист закупок</h3>
-      <div class="muted" style="margin-bottom:10px">Папки, которые на рейлах стабильно дают низкую выручку на метр.</div>
-      <div id="stopList"></div>
-    </div>
-  </div>
-
-  <!-- ================= VIEW: SETTINGS ================= -->
-  <div id="view-settings" class="hidden">
-    <div class="card">
-      <h3>Импорт из 1С</h3>
-      <div class="muted" style="margin-bottom:10px">Excel (.xlsx) или CSV. Колонки: «Папка/Группа», «Сумма продаж».</div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
-      <button class="btn-primary" id="btnImport" style="width:100%">📥 Загрузить файл</button>
-      <div id="importResult" style="margin-top:10px"></div>
-    </div>
-    <div class="card">
-      <h3>Магазины</h3>
-      <div id="storesAdmin"></div>
-      <button class="btn-ghost btn-sm" id="btnAddStoreAdmin" style="margin-top:10px;width:100%">+ Добавить магазин</button>
-    </div>
-    <div class="card">
-      <h3>Резервная копия</h3>
-      <div class="row">
-        <button class="btn-ghost btn-sm" id="btnExportJSON" style="flex:1">💾 Сохранить JSON</button>
-        <button class="btn-ghost btn-sm" id="btnImportJSON" style="flex:1">📂 Загрузить JSON</button>
-      </div>
-      <input type="file" id="jsonInput" accept=".json" style="display:none">
-      <div style="margin-top:10px">
-        <button class="btn-accent btn-sm" id="btnExportPDF" style="width:100%">📄 Экспорт отчёта (PDF)</button>
-      </div>
-    </div>
-    <div class="card">
-      <h3>PIN-код</h3>
-      <label class="field">Новый PIN (4–8 цифр)
-        <input type="password" id="pinNew" inputmode="numeric" maxlength="8" placeholder="••••">
-      </label>
-      <button class="btn-primary btn-sm" id="btnSavePin" style="width:100%">Сохранить PIN</button>
-    </div>
-    <div class="card">
-      <h3>Опасная зона</h3>
-      <button class="btn-warn btn-sm" id="btnWipe" style="width:100%">🗑 Очистить все данные</button>
-      <div class="muted" style="margin-top:8px;font-size:12px">Удаляет все магазины, рейлы, столы, продажи и настройки.</div>
-    </div>
-  </div>
-
-  <!-- ================= TAB BAR ================= -->
-  <nav class="tabs">
-    <button class="tab active" data-view="rails"><span class="ico">🏷️</span>Рейлы</button>
-    <button class="tab" data-view="dash"><span class="ico">📊</span>Сводка</button>
-    <button class="tab" data-view="pareto"><span class="ico">📈</span>Парето</button>
-    <button class="tab" data-view="beforeafter"><span class="ico">🔄</span>До/После</button>
-    <button class="tab" data-view="network"><span class="ico">🌐</span>Сеть</button>
-    <button class="tab" data-view="stop"><span class="ico">⛔</span>Стоп</button>
-  </nav>
-</div>
-
-<!-- ================= MODAL ================= -->
-<div id="modalRoot"></div>
-
-<!-- ================= TOAST ================= -->
-<div id="toast" class="toast"></div>
+<div id="modal-root"></div>
 
 <script>
-"use strict";
-
 /* ============================================================
-   ХРАНИЛИЩЕ
+   МЕТРАЖ v2.1 — единый файл
+   Секции:
+   1. Константы
+   2. DB (LocalStorage)
+   3. Утилиты
+   4. Парсер XLSX (Этап 1)
+   5. Расчёты: распределение выручки, ABC, тепловая карта, SMLY, прогноз
+   6. Рендер: Главная
+   7. Рендер: Аналитика
+   8. Рендер: Рейлы и Стены (Дашборд + Справочник)
+   9. Рендер: Настройки
+   10. Модалки (импорт, магазины, шторка папки, CRUD)
+   11. Роутер
    ============================================================ */
-const DB_KEY = "railmap_v4";
-const PIN_KEY = "railmap_pin";
-const SESSION_KEY = "railmap_session";
 
-const DEFAULT_DB = {
-  stores: [],        // {id, name}
-  rails: [],         // {id, storeId, name, length, folder}
-  tables: [],        // {id, storeId, name, folder, qty}
-  sales: {},         // {storeId: {folder: revenue}}
-  moves: [],         // {id, storeId, date, note}
-  salesHistory: {},  // {storeId: {date: {folder: revenue}}} для до/после
-  meta: { lastImport: null }
+/* ---------- 1. КОНСТАНТЫ ---------- */
+const SERVICE_KEYWORDS = ["Распродажа","Будут удалены","Спец костюм",
+  "под вопросом","возможно будет удален","Архив"];
+
+const GENDER_RULES = [
+  { gender:"kids",   keywords:["детск","ребен","для мальчика","для девочки"] },
+  { gender:"male",   keywords:["мужск","мальчик"] },
+  { gender:"female", keywords:["женск","девочк"] }
+];
+
+const KIT_MAP = {
+  "Одежда":"clothing","Обувь":"shoes","Аксессуары":"accessories",
+  "Распродажа":"sale","Детская":"other","Будут удалены":"other",
+  "Спец костюм":"other","Архив":"other"
 };
+const KIT_LABEL = { clothing:"Одежда", shoes:"Обувь", accessories:"Аксессуары", sale:"Распродажа" };
 
-let DB = loadDB();
-let currentStoreId = null;
-let currentView = "rails";
-let pinBuffer = "";
+const SMLY_K = 1.10;
+const DATE_BLOCK = "2026-10-01"; // магазин создан раньше — блокировка периода < 1.10.2026
 
-function loadDB(){
-  try{
-    const raw = localStorage.getItem(DB_KEY);
-    if(!raw) return JSON.parse(JSON.stringify(DEFAULT_DB));
-    const d = JSON.parse(raw);
-    // merge с дефолтами
-    return Object.assign(JSON.parse(JSON.stringify(DEFAULT_DB)), d);
-  }catch(e){
-    console.error("loadDB error", e);
-    return JSON.parse(JSON.stringify(DEFAULT_DB));
-  }
-}
-function saveDB(){
-  try{ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
-  catch(e){ console.error("saveDB error", e); toast("Ошибка сохранения"); }
-}
-function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+/* ---------- 2. DB ---------- */
+const DB_KEY = "metrag_db_v21";
+let DB = null;
 
-/* ============================================================
-   УТИЛИТЫ
-   ============================================================ */
-function fmtMoney(n){
-  if(n == null || isNaN(n)) return "0 ₽";
-  const r = Math.round(n);
-  return r.toLocaleString("ru-RU") + " ₽";
-}
-function fmtMoneyShort(n){
-  if(n == null || isNaN(n)) return "0";
-  if(Math.abs(n) >= 1e6) return (n/1e6).toFixed(1).replace(".",",") + " млн";
-  if(Math.abs(n) >= 1e3) return (n/1e3).toFixed(0) + " тыс";
-  return Math.round(n).toLocaleString("ru-RU");
-}
-function fmtNum(n){
-  if(n == null || isNaN(n)) return "0";
-  return (Math.round(n*10)/10).toLocaleString("ru-RU");
-}
-function fmtDate(d){
-  const dt = (d instanceof Date) ? d : new Date(d);
-  if(isNaN(dt)) return "—";
-  return dt.toLocaleDateString("ru-RU", {day:"2-digit", month:"short", year:"numeric"});
-}
-function todayStr(){
-  const d = new Date();
-  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-}
-function toast(msg){
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(t._tid);
-  t._tid = setTimeout(()=>t.classList.remove("show"), 2200);
-}
-function esc(s){
-  if(s == null) return "";
-  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-}
-
-/* ============================================================
-   PIN
-   ============================================================ */
-function getPin(){ return localStorage.getItem(PIN_KEY); }
-function setPin(p){ localStorage.setItem(PIN_KEY, p); }
-function initPinUI(){
-  const dots = document.getElementById("pinDots");
-  const pad = document.getElementById("pinPad");
-  const err = document.getElementById("pinError");
-  const saved = getPin();
-  const pinLen = saved ? saved.length : 4;
-
-  function renderDots(){
-    dots.innerHTML = "";
-    for(let i=0;i<pinLen;i++){
-      const d = document.createElement("div");
-      d.className = "pin-dot" + (i < pinBuffer.length ? " filled" : "");
-      dots.appendChild(d);
-    }
-  }
-  function press(k){
-    err.textContent = "";
-    if(k === "del"){ pinBuffer = pinBuffer.slice(0,-1); renderDots(); return; }
-    if(k === "ok"){ tryPin(); return; }
-    if(pinBuffer.length >= pinLen) return;
-    pinBuffer += k;
-    renderDots();
-    if(pinBuffer.length === pinLen) setTimeout(tryPin, 120);
-  }
-  function tryPin(){
-    if(!saved){
-      // первый вход — устанавливаем PIN
-      if(pinBuffer.length >= 4){
-        setPin(pinBuffer);
-        sessionStorage.setItem(SESSION_KEY,"1");
-        unlockApp();
-      } else { pinBuffer=""; renderDots(); err.textContent="PIN должен быть 4–8 цифр"; }
-      return;
-    }
-    if(pinBuffer === saved){
-      sessionStorage.setItem(SESSION_KEY,"1");
-      unlockApp();
-    } else {
-      err.textContent = "Неверный PIN";
-      pinBuffer = "";
-      renderDots();
-      if(navigator.vibrate) navigator.vibrate(80);
-    }
-  }
-
-  pad.innerHTML = "";
-  ["1","2","3","4","5","6","7","8","9","del","0","ok"].forEach(k=>{
-    const b = document.createElement("button");
-    b.className = "pin-key";
-    b.textContent = k === "del" ? "⌫" : k === "ok" ? "✓" : k;
-    b.addEventListener("click", ()=>press(k));
-    pad.appendChild(b);
-  });
-  renderDots();
-}
-function unlockApp(){
-  document.getElementById("pinScreen").classList.add("hidden");
-  document.getElementById("app").classList.remove("hidden");
-  initApp();
-}
-
-/* ============================================================
-   ДАННЫЕ: доступ
-   ============================================================ */
-function getStore(id){ return DB.stores.find(s=>s.id===id); }
-function getRails(storeId){ return DB.rails.filter(r=>r.storeId===storeId); }
-function getTables(storeId){ return DB.tables.filter(t=>t.storeId===storeId); }
-function getSalesMap(storeId){ return DB.sales[storeId] || {}; }
-function totalRevenue(storeId){
-  const m = getSalesMap(storeId);
-  return Object.values(m).reduce((a,b)=>a+(Number(b)||0),0);
-}
-function totalMeters(storeId){
-  return getRails(storeId).reduce((a,r)=>a+(Number(r.length)||0),0);
-}
-
-/**
- * Распределяет продажи по папке между рейлами пропорционально длине.
- * Возвращает Map railId -> revenue
- */
-function railRevenues(storeId){
-  const rails = getRails(storeId);
-  const sales = getSalesMap(storeId);
-  const map = {};
-  // группируем рейлы по папке
-  const byFolder = {};
-  rails.forEach(r=>{
-    const f = (r.folder||"").trim();
-    if(!f) return;
-    (byFolder[f] = byFolder[f] || []).push(r);
-  });
-  Object.keys(byFolder).forEach(folder=>{
-    const rev = Number(sales[folder] || 0);
-    const group = byFolder[folder];
-    const totalLen = group.reduce((a,r)=>a+(Number(r.length)||0),0);
-    if(totalLen <= 0 || rev <= 0){
-      group.forEach(r=>{ map[r.id] = 0; });
-      return;
-    }
-    group.forEach(r=>{
-      map[r.id] = rev * (Number(r.length)||0) / totalLen;
-    });
-  });
-  // рейлы без папки или без продаж
-  rails.forEach(r=>{ if(map[r.id] == null) map[r.id] = 0; });
-  return map;
-}
-
-/**
- * Тепловая карта: возвращает {hot, mid, cold} пороги по перцентилям
- * среди рейлов с ненулевой длиной.
- */
-function heatThresholds(storeId){
-  const revs = railRevenues(storeId);
-  const rails = getRails(storeId).filter(r=>Number(r.length)>0);
-  if(!rails.length) return {hot:0, cold:0};
-  const perM = rails.map(r => (revs[r.id]||0) / (Number(r.length)||1)).sort((a,b)=>a-b);
-  const q = (p) => {
-    const idx = (perM.length-1)*p;
-    const lo = Math.floor(idx), hi = Math.ceil(idx);
-    if(lo===hi) return perM[lo];
-    return perM[lo] + (perM[hi]-perM[lo])*(idx-lo);
+function dbDefault(){
+  return {
+    version:"2.1",
+    stores:[],
+    rows:[], rails:[], walls:[], brackets:[], tables:[],
+    sales:{}, salesHistory:{},
+    moves:[],
+    overrides:{ gender:{} },
+    meta:{ lastImport:{}, lastImportBackup:{}, ui:{} }
   };
-  const hot = q(0.8);
-  const cold = q(0.2);
-  return {hot, cold};
 }
-function railClass(revPerM, th){
-  if(revPerM >= th.hot && revPerM > 0) return "hot";
-  if(revPerM <= th.cold) return "cold";
+function dbLoad(){
+  try{ const raw = localStorage.getItem(DB_KEY); DB = raw ? JSON.parse(raw) : dbDefault(); }
+  catch(e){ DB = dbDefault(); }
+  if(!DB.meta) DB.meta = {lastImport:{},lastImportBackup:{},ui:{}};
+  if(!DB.meta.ui) DB.meta.ui = {};
+  if(!DB.overrides) DB.overrides = {gender:{}};
+  if(!DB.overrides.gender) DB.overrides.gender = {};
+}
+function dbSave(){
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
+  catch(e){ alert("Ошибка сохранения: "+e.message); }
+}
+function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+
+/* ---------- 3. УТИЛИТЫ ---------- */
+const fmt = n => (n==null||isNaN(n)) ? "—" :
+  new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(Math.round(n));
+const fmtM = n => (n==null||isNaN(n)) ? "—" : Number(n).toFixed(2).replace(".",",");
+const pct = (a,b) => (!b||isNaN(b)) ? 0 : Math.round(a/b*100);
+
+function currentStore(){
+  const id = DB.meta.ui.storeId;
+  return DB.stores.find(s=>s.id===id) || DB.stores[0] || null;
+}
+function currentPeriod(){
+  return DB.meta.ui.period || defaultPeriod();
+}
+function defaultPeriod(){
+  const d = new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+}
+function periodLabel(p){
+  if(!p) return "—";
+  const [y,m] = p.split("-");
+  const months = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+  return months[+m-1]+" "+y;
+}
+function monthDays(y,m){ return new Date(y,m,0).getDate(); }
+function prevPeriod(p){
+  const [y,m] = p.split("-").map(Number);
+  const d = new Date(y, m-2, 1);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+}
+function sameMonthLastYear(p){
+  const [y,m] = p.split("-").map(Number);
+  return (y-1)+"-"+String(m).padStart(2,"0");
+}
+function escapeHtml(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* п.1.2 — пол: ручное переопределение > эвристика */
+function detectGender(folderName){
+  const ov = DB.overrides.gender[folderName];
+  if(ov) return ov==="none" ? null : ov;
+  const low = String(folderName).toLowerCase();
+  for(const rule of GENDER_RULES){
+    if(rule.keywords.some(k=>low.includes(k))) return rule.gender;
+  }
+  return null;
+}
+/* п.1.3 — кит по узлу 1-го уровня */
+function detectKit(topName){
+  return KIT_MAP[topName] || "other";
+}
+/* п.1.1 — служебная */
+function isServiceName(name){
+  return SERVICE_KEYWORDS.some(k=>String(name).includes(k));
+}
+
+/* ---------- 4. ПАРСЕР XLSX (Этап 1) ---------- */
+/*
+  Чек-лист №3: нормализация табов/пробелов, автоопределение шага.
+  Чек-лист №2: поиск «Итого» + сверка с суммой листовых узлов.
+  Чек-лист №1: ключ папки = полный путь.
+*/
+function parseXlsx(arrayBuffer){
+  const wb = XLSX.read(arrayBuffer, {type:"array"});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
+  if(!rows.length) throw new Error("Лист пуст");
+
+  // нормализация отступов
+  const norm = rows.map(r=>{
+    const raw = String(r[0] ?? "");
+    // таб = 2 пробела
+    const withSpaces = raw.replace(/\t/g,"  ");
+    const m = withSpaces.match(/^(\s*)/);
+    const indent = m ? m[1].length : 0;
+    return { rawName: withSpaces.trim(), indent, cells: r };
+  }).filter(x=>x.rawName.length>0);
+
+  // шаг отступа = минимальный ненулевой
+  let step = 2;
+  const indents = norm.map(x=>x.indent).filter(i=>i>0).sort((a,b)=>a-b);
+  if(indents.length){
+    // ищем минимальный, который повторяется или делит другие
+    const min = indents[0];
+    if(min>0 && min<=8) step = min;
+    else step = 2;
+  }
+
+  // строим узлы
+  const nodes = norm.map(x=>({
+    name: x.rawName,
+    level: Math.floor(x.indent/step),
+    sum: numFromCells(x.cells),
+    qty: qtyFromCells(x.cells),
+    children: [],
+    parent: null,
+    path: ""
+  }));
+
+  // плоский файл?
+  const allZero = nodes.every(n=>n.level===0);
+  if(allZero){
+    // предупреждение, но продолжаем: level = 3 для всех, path = name
+    nodes.forEach(n=>{ n.level = 3; n.path = n.name; });
+    return { nodes, flat:true, convergence:null };
+  }
+
+  // дерево по стеку
+  const stack = [];
+  const roots = [];
+  for(const n of nodes){
+    while(stack.length && stack[stack.length-1].level >= n.level) stack.pop();
+    if(stack.length){
+      const p = stack[stack.length-1];
+      n.parent = p;
+      p.children.push(n);
+      n.path = p.path + "/" + n.name;
+    } else {
+      roots.push(n);
+      n.path = n.name;
+    }
+    stack.push(n);
+  }
+
+  // проверка сходимости (№2)
+  // ищем «Итого» в имени
+  let totalRow = null;
+  for(const n of nodes){
+    if(/итого|всего|total/i.test(n.name)){ totalRow = n; break; }
+  }
+  const sumRoots = roots.reduce((s,r)=>s+r.sum,0);
+  const sumLeaves = nodes.filter(n=>n.children.length===0).reduce((s,n)=>s+n.sum,0);
+  let convergence = null;
+  if(totalRow){
+    convergence = { expected: totalRow.sum, got: sumLeaves,
+      ok: Math.abs(totalRow.sum - sumLeaves) < 1 };
+  } else {
+    convergence = { expected: sumRoots, got: sumLeaves,
+      ok: Math.abs(sumRoots - sumLeaves) < 1, note:"Без строки Итого — сверка корней и листьев" };
+  }
+
+  return { nodes, roots, flat:false, convergence };
+}
+function numFromCells(cells){
+  // ищем первое числовое значение в строке (кроме 1-й ячейки)
+  for(let i=1;i<cells.length;i++){
+    const v = cells[i];
+    if(typeof v === "number" && isFinite(v)) return v;
+    if(typeof v === "string"){
+      const cleaned = v.replace(/\s/g,"").replace(",",".").replace(/[^\d.-]/g,"");
+      const n = parseFloat(cleaned);
+      if(isFinite(n) && cleaned.length) return n;
+    }
+  }
+  return 0;
+}
+function qtyFromCells(cells){
+  // эвристика: вторая числовая колонка = штуки
+  const nums = [];
+  for(let i=1;i<cells.length;i++){
+    const v = cells[i];
+    if(typeof v === "number" && isFinite(v)) nums.push(v);
+    else if(typeof v === "string"){
+      const cleaned = v.replace(/\s/g,"").replace(",",".").replace(/[^\d.-]/g,"");
+      const n = parseFloat(cleaned);
+      if(isFinite(n) && cleaned.length) nums.push(n);
+    }
+  }
+  return nums.length > 1 ? nums[1] : (nums[0] || 0);
+}
+
+/* превращаем узлы в плоский список папок для sales */
+function nodesToFolders(parsed){
+  // целевые узлы: level >= 3 (п.1.5). Контейнеры (1–2) не считаем.
+  // Служебные — isService. Возвраты — sum < 0.
+  const out = [];
+  for(const n of parsed.nodes){
+    if(n.level < 3) continue;
+    const service = isServiceName(n.name);
+    const ret = n.sum < 0;
+    out.push({
+      path: n.path,
+      name: n.name,
+      sum: n.sum,
+      qty: n.qty,
+      level: n.level,
+      isService: service,
+      isReturn: ret
+    });
+  }
+  return out;
+}
+
+/* период из имени файла (№10) */
+function periodFromFilename(name){
+  const m = String(name).match(/^(.+)_(\d{4}-\d{2})\.xlsx$/i);
+  if(!m) return null;
+  return { storeName: m[1], period: m[2] };
+}
+
+/* ---------- 5. РАСЧЁТЫ ---------- */
+/*
+  Распределение выручки между рейлами и стенами (п.4.1)
+  — по погонному метру пола (D2)
+*/
+function distributeRevenue(storeId, folderPath){
+  const s = DB.sales[storeId] || {};
+  const folder = s[folderPath];
+  if(!folder) return null;
+  const revenue = folder.sum || 0;
+
+  const rails = DB.rails.filter(r=>r.storeId===storeId && r.folder===folderPath);
+  const walls = DB.walls.filter(w=>w.storeId===storeId && w.folder===folderPath);
+
+  const railMeters = rails.reduce((a,r)=>a+(+r.length||0),0);
+  const wallMeters = walls.reduce((a,w)=>a+(+w.length||0),0);
+  const total = railMeters + wallMeters;
+
+  const railOut = rails.map(r=>({
+    kind:"rail", id:r.id, code:r.code, rowId:r.rowId, side:r.side,
+    length:+r.length||0,
+    revenue: total ? revenue * ((+r.length||0)/total) : 0,
+    perMeter: total && (+r.length) ? (revenue*((+r.length)/total))/(+r.length) : 0
+  }));
+  const wallOut = walls.map(w=>({
+    kind:"wall", id:w.id, code:w.code, rowId:w.rowId,
+    length:+w.length||0, tiers:+w.tiers||1,
+    revenue: total ? revenue * ((+w.length||0)/total) : 0,
+    perMeterFloor: total && (+w.length) ? (revenue*((+w.length)/total))/(+w.length) : 0,
+    perMeterGoods: (total && (+w.length) && (+w.tiers))
+      ? (revenue*((+w.length)/total))/((+w.length)*(+w.tiers)) : 0,
+    perTierRevenue: (+w.tiers) ? (revenue*((+w.length)/total))/(+w.tiers) : 0
+  }));
+
+  return { revenue, railMeters, wallMeters, totalMeters:total, rails:railOut, walls:wallOut, unplaced: total===0 };
+}
+
+/* все папки магазина с метражом и ₽/м */
+function foldersWithMetrics(storeId){
+  const s = DB.sales[storeId] || {};
+  const out = [];
+  for(const [path, f] of Object.entries(s)){
+    const d = distributeRevenue(storeId, path);
+    out.push({
+      path, name: f.path ? f.path.split("/").pop() : path,
+      sum: f.sum||0, qty: f.qty||0, level: f.level||3,
+      isService: !!f.isService, isReturn: !!f.isReturn,
+      railMeters: d ? d.railMeters : 0,
+      wallMeters: d ? d.wallMeters : 0,
+      totalMeters: d ? d.totalMeters : 0,
+      perMeter: d && d.totalMeters ? d.revenue/d.totalMeters : 0,
+      unplaced: d ? d.unplaced : true,
+      gender: detectGender(f.path ? f.path.split("/").pop() : path)
+    });
+  }
+  return out;
+}
+
+/* ABC (п.4.3) */
+function computeABC(storeId, levelMin=3, byMeters=false){
+  const all = foldersWithMetrics(storeId)
+    .filter(f=>f.level>=levelMin && !f.isService && !f.isReturn);
+  const placed = all.filter(f=>!f.unplaced);
+  const metric = byMeters ? "totalMeters" : "sum";
+  const sorted = placed.slice().sort((a,b)=>b[metric]-a[metric]);
+  const total = sorted.reduce((s,x)=>s+x[metric],0);
+  let cum = 0;
+  const result = { A:[], B:[], C:[], unplaced: all.filter(f=>f.unplaced), total };
+  for(const f of sorted){
+    cum += f[metric];
+    const share = total ? cum/total : 0;
+    const group = share<=0.80 ? "A" : share<=0.95 ? "B" : "C";
+    result[group].push(f);
+  }
+  return result;
+}
+
+/* тепловая карта (п.4.2) — перцентили P20/P80 по рейлам+стенам */
+function heatmap(storeId){
+  const vals = [];
+  for(const r of DB.rails.filter(x=>x.storeId===storeId)){
+    const d = distributeRevenue(storeId, r.folder);
+    if(d && d.totalMeters>0){
+      const rr = d.rails.find(x=>x.id===r.id);
+      if(rr) vals.push(rr.perMeter);
+    }
+  }
+  for(const w of DB.walls.filter(x=>x.storeId===storeId)){
+    const d = distributeRevenue(storeId, w.folder);
+    if(d && d.totalMeters>0){
+      const ww = d.walls.find(x=>x.id===w.id);
+      if(ww) vals.push(ww.perMeterFloor);
+    }
+  }
+  if(!vals.length) return {p20:0,p80:0};
+  const sorted = vals.slice().sort((a,b)=>a-b);
+  const p20 = sorted[Math.floor(sorted.length*0.2)] ?? sorted[0];
+  const p80 = sorted[Math.floor(sorted.length*0.8)] ?? sorted[sorted.length-1];
+  return {p20, p80, values:sorted};
+}
+function heatClass(v, hm){
+  if(v>=hm.p80) return "hot";
+  if(v<=hm.p20) return "cold";
   return "mid";
 }
 
-/* ============================================================
-   ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ
-   ============================================================ */
-function initApp(){
-  // выбрать магазин
-  if(!DB.stores.length){
-    // первый запуск — создаём магазин по умолчанию
-    DB.stores.push({id:uid(), name:"Основной магазин"});
-    saveDB();
+/* SMLY план (п.4.4) */
+function autoPlan(storeId, period){
+  const store = DB.stores.find(s=>s.id===storeId);
+  if(store && store.plan && store.plan.source==="manual") return {value:store.plan.value, source:"manual"};
+  const hist = DB.salesHistory[storeId] || {};
+  const lastYear = hist[sameMonthLastYear(period)];
+  if(lastYear){
+    const sum = Object.values(lastYear).reduce((a,b)=>a+(b.sum||b||0),0);
+    if(sum>0) return {value: Math.round(sum*SMLY_K), source:"smly",
+      label:`прошлый год × ${SMLY_K.toFixed(2)}`};
   }
-  if(!currentStoreId || !getStore(currentStoreId)){
-    currentStoreId = DB.stores[0].id;
+  // 3 месяца
+  const months = [];
+  let p = period;
+  for(let i=0;i<3;i++){
+    p = prevPeriod(p);
+    if(hist[p]) months.push(hist[p]);
   }
-  renderStoreSelect();
-  bindGlobalEvents();
-  renderAll();
-}
-
-function renderStoreSelect(){
-  const sel = document.getElementById("storeSelect");
-  sel.innerHTML = "";
-  DB.stores.forEach(s=>{
-    const o = document.createElement("option");
-    o.value = s.id; o.textContent = s.name;
-    if(s.id === currentStoreId) o.selected = true;
-    sel.appendChild(o);
-  });
-}
-
-function bindGlobalEvents(){
-  // tabs
-  document.querySelectorAll(".tab").forEach(t=>{
-    t.addEventListener("click", ()=>{
-      document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
-      t.classList.add("active");
-      switchView(t.dataset.view);
-    });
-  });
-  // store change
-  document.getElementById("storeSelect").addEventListener("change", (e)=>{
-    currentStoreId = e.target.value;
-    renderAll();
-  });
-  // header buttons
-  document.getElementById("btnSettingsTop").addEventListener("click", ()=>{
-    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
-    switchView("settings");
-  });
-  document.getElementById("btnAddStore").addEventListener("click", ()=>openStoreModal());
-  document.getElementById("btnAddRail").addEventListener("click", ()=>openRailModal());
-  document.getElementById("btnAddTable").addEventListener("click", ()=>openTableModal());
-  // before/after
-  document.getElementById("btnFixMove").addEventListener("click", fixMove);
-  // settings
-  document.getElementById("btnImport").addEventListener("click", ()=>document.getElementById("fileInput").click());
-  document.getElementById("fileInput").addEventListener("change", onFileImport);
-  document.getElementById("btnExportJSON").addEventListener("click", exportJSON);
-  document.getElementById("btnImportJSON").addEventListener("click", ()=>document.getElementById("jsonInput").click());
-  document.getElementById("jsonInput").addEventListener("change", importJSON);
-  document.getElementById("btnExportPDF").addEventListener("click", exportPDF);
-  document.getElementById("btnAddStoreAdmin").addEventListener("click", ()=>openStoreModal());
-  document.getElementById("btnSavePin").addEventListener("click", saveNewPin);
-  document.getElementById("btnWipe").addEventListener("click", wipeAll);
-}
-
-function switchView(view){
-  currentView = view;
-  ["rails","dash","pareto","beforeafter","network","stop","settings"].forEach(v=>{
-    const el = document.getElementById("view-"+v);
-    if(el) el.classList.toggle("hidden", v !== view);
-  });
-  // подсветка таба (если есть)
-  document.querySelectorAll(".tab").forEach(t=>{
-    t.classList.toggle("active", t.dataset.view === view);
-  });
-  renderAll();
-}
-
-function renderAll(){
-  if(currentView === "rails") renderRailsView();
-  else if(currentView === "dash") renderDash();
-  else if(currentView === "pareto") renderPareto();
-  else if(currentView === "beforeafter") renderBeforeAfter();
-  else if(currentView === "network") renderNetwork();
-  else if(currentView === "stop") renderStopList();
-  else if(currentView === "settings") renderSettings();
-  // storeBar всегда актуален
-  renderStoreSelect();
-}
-
-/* ============================================================
-   VIEW: RAILS
-   ============================================================ */
-function renderRailsView(){
-  const rails = getRails(currentStoreId);
-  const tables = getTables(currentStoreId);
-  const revs = railRevenues(currentStoreId);
-  const th = heatThresholds(currentStoreId);
-
-  // metrics
-  document.getElementById("mRevenue").textContent = fmtMoney(totalRevenue(currentStoreId));
-  const totalRev = totalRevenue(currentStoreId);
-  const totalLen = totalMeters(currentStoreId);
-  document.getElementById("mPerMeter").textContent = totalLen > 0 ? fmtMoney(totalRev/totalLen) : "—";
-  document.getElementById("mRails").textContent = rails.length;
-  document.getElementById("mMeters").textContent = fmtNum(totalLen);
-  document.getElementById("mTables").textContent = tables.length;
-
-  // список рейлов
-  const list = document.getElementById("railList");
-  if(!rails.length){
-    list.innerHTML = `<div class="empty"><div class="big">🏷️</div><div>Пока нет рейлов.<br>Нажмите «+ Рейл», чтобы добавить.</div></div>`;
-  } else {
-    // сортировка по выручке на метр (убывание)
-    const sorted = rails.slice().sort((a,b)=>{
-      const ra = (revs[a.id]||0)/(Number(a.length)||1);
-      const rb = (revs[b.id]||0)/(Number(b.length)||1);
-      return rb - ra;
-    });
-    list.innerHTML = "";
-    sorted.forEach(r=>{
-      const rev = revs[r.id] || 0;
-      const len = Number(r.length) || 0;
-      const perM = len > 0 ? rev/len : 0;
-      const cls = railClass(perM, th);
-      const card = document.createElement("div");
-      card.className = "rail-card " + cls;
-      card.innerHTML = `
-        <div class="rc-top">
-          <div>
-            <div class="rc-name">${esc(r.name)}</div>
-            <div class="rc-folder">${esc(r.folder || "— без папки —")} · ${fmtNum(len)} м</div>
-          </div>
-          <div class="rc-val">
-            <div class="num">${fmtMoney(rev)}</div>
-            <div class="per">${fmtMoney(perM)} / м</div>
-          </div>
-        </div>`;
-      card.addEventListener("click", ()=>openRailModal(r.id));
-      list.appendChild(card);
-    });
+  if(months.length>=3){
+    const totals = months.map(m=>Object.values(m).reduce((a,b)=>a+(b.sum||b||0),0));
+    const avg = totals.reduce((a,b)=>a+b,0)/totals.length;
+    return {value: Math.round(avg*SMLY_K), source:"3months",
+      label:`среднее за 3 мес × ${SMLY_K.toFixed(2)}`};
   }
+  return {value:0, source:"none", label:"Недостаточно данных — задайте вручную"};
+}
 
-  // столы
-  const tList = document.getElementById("tableList");
-  if(!tables.length){
-    tList.innerHTML = `<div class="empty" style="padding:20px"><div class="muted">Нет столов. Столы — визуальная заметка, не влияют на выручку.</div></div>`;
-  } else {
-    tList.innerHTML = "";
-    tables.forEach(t=>{
-      const card = document.createElement("div");
-      card.className = "card";
-      card.style.marginBottom = "10px";
-      card.style.cursor = "pointer";
-      card.innerHTML = `
-        <div class="row-between">
-          <div>
-            <div style="font-weight:800">${esc(t.name)}</div>
-            <div class="muted">${esc(t.folder || "—")} · ${Number(t.qty)||0} шт.</div>
-          </div>
-          <div class="pill">склад</div>
-        </div>`;
-      card.addEventListener("click", ()=>openTableModal(t.id));
-      tList.appendChild(card);
-    });
+/* прогноз месяца (п.4.5) */
+function forecast(storeId, period){
+  const now = new Date();
+  const [y,m] = period.split("-").map(Number);
+  const totalDays = monthDays(y,m);
+  const isCurrent = (now.getFullYear()===y && now.getMonth()+1===m);
+  if(!isCurrent) return null;
+  const fact = totalRevenue(storeId, period);
+  const daysPassed = Math.max(1, now.getDate());
+  return Math.round((fact/daysPassed)*totalDays*1.05);
+}
+
+function totalRevenue(storeId, period){
+  const s = DB.sales[storeId] || {};
+  // если период не совпадает с последним импортом — берём из истории
+  const hist = DB.salesHistory[storeId] || {};
+  if(hist[period]){
+    return Object.values(hist[period]).reduce((a,b)=>a+(b.sum||b||0),0);
   }
+  return Object.values(s).reduce((a,f)=>a+(f.sum||0),0);
 }
 
-/* ============================================================
-   MODAL: Store / Rail / Table
-   ============================================================ */
-function openModal(html){
-  const root = document.getElementById("modalRoot");
-  root.innerHTML = `<div class="modal-back" id="modalBack"><div class="modal">${html}</div></div>`;
-  document.getElementById("modalBack").addEventListener("click", (e)=>{
-    if(e.target.id === "modalBack") closeModal();
-  });
-}
-function closeModal(){
-  document.getElementById("modalRoot").innerHTML = "";
-}
-
-function openStoreModal(storeId){
-  const s = storeId ? getStore(storeId) : null;
-  openModal(`
-    <button class="close-x" id="mClose">✕</button>
-    <h3>${s ? "Редактировать магазин" : "Новый магазин"}</h3>
-    <label class="field">Название
-      <input id="mStoreName" value="${s ? esc(s.name) : ""}" placeholder="Например, Алик">
-    </label>
-    <div class="form-actions">
-      ${s ? `<button class="btn-warn" id="mStoreDelete">Удалить</button>` : ""}
-      <button class="btn-primary" id="mStoreSave">Сохранить</button>
-    </div>
-  `);
-  document.getElementById("mClose").onclick = closeModal;
-  document.getElementById("mStoreSave").onclick = ()=>{
-    const name = document.getElementById("mStoreName").value.trim();
-    if(!name){ toast("Введите название"); return; }
-    if(s){ s.name = name; }
-    else {
-      const ns = {id:uid(), name};
-      DB.stores.push(ns);
-      currentStoreId = ns.id;
-    }
-    saveDB(); closeModal(); renderAll(); toast("Сохранено");
-  };
-  if(s){
-    document.getElementById("mStoreDelete").onclick = ()=>{
-      if(!confirm(`Удалить магазин «${s.name}» и все его рейлы/столы/продажи?`)) return;
-      DB.stores = DB.stores.filter(x=>x.id !== s.id);
-      DB.rails = DB.rails.filter(r=>r.storeId !== s.id);
-      DB.tables = DB.tables.filter(t=>t.storeId !== s.id);
-      delete DB.sales[s.id];
-      delete DB.salesHistory[s.id];
-      DB.moves = DB.moves.filter(m=>m.storeId !== s.id);
-      if(currentStoreId === s.id){
-        currentStoreId = DB.stores.length ? DB.stores[0].id : null;
-        if(!currentStoreId){
-          const ns = {id:uid(), name:"Основной магазин"};
-          DB.stores.push(ns);
-          currentStoreId = ns.id;
-        }
-      }
-      saveDB(); closeModal(); renderAll(); toast("Удалено");
-    };
+/* киты (п.1.3) */
+function kitsBreakdown(storeId){
+  const s = DB.sales[storeId] || {};
+  const res = { clothing:0, shoes:0, accessories:0, sale:0, other:0 };
+  for(const [path,f] of Object.entries(s)){
+    const top = path.split("/")[0];
+    const kit = detectKit(top);
+    res[kit] = (res[kit]||0) + (f.sum||0);
   }
+  return res;
 }
 
-function openRailModal(railId){
-  const r = railId ? DB.rails.find(x=>x.id === railId) : null;
-  // собрать уникальные папки из продаж + существующих рейлов
-  const salesMap = getSalesMap(currentStoreId);
-  const folderSet = new Set([...Object.keys(salesMap), ...getRails(currentStoreId).map(x=>x.folder).filter(Boolean)]);
-  const folders = Array.from(folderSet).sort();
-  openModal(`
-    <button class="close-x" id="mClose">✕</button>
-    <h3>${r ? "Редактировать рейл" : "Новый рейл"}</h3>
-    <label class="field">Название
-      <input id="mRailName" value="${r ? esc(r.name) : ""}" placeholder="Ряд 1-А">
-    </label>
-    <label class="field">Длина, м
-      <input id="mRailLen" type="number" step="0.1" min="0" value="${r ? Number(r.length)||0 : ""}" placeholder="2.5">
-    </label>
-    <label class="field">Папка 1С
-      <input id="mRailFolder" list="folderList" value="${r ? esc(r.folder||"") : ""}" placeholder="Джинсы женские">
-      <datalist id="folderList">${folders.map(f=>`<option value="${esc(f)}">`).join("")}</datalist>
-    </label>
-    <div class="muted" style="font-size:12px;margin-top:-4px">Выручка по папке распределится между всеми рейлами этой папки пропорционально длине.</div>
-    <div class="form-actions">
-      ${r ? `<button class="btn-warn" id="mRailDelete">Удалить</button>` : ""}
-      <button class="btn-primary" id="mRailSave">Сохранить</button>
-    </div>
-  `);
-  document.getElementById("mClose").onclick = closeModal;
-  document.getElementById("mRailSave").onclick = ()=>{
-    const name = document.getElementById("mRailName").value.trim();
-    const len = parseFloat(document.getElementById("mRailLen").value);
-    const folder = document.getElementById("mRailFolder").value.trim();
-    if(!name){ toast("Введите название"); return; }
-    if(isNaN(len) || len < 0){ toast("Введите корректную длину"); return; }
-    if(r){
-      r.name = name; r.length = len; r.folder = folder;
-    } else {
-      DB.rails.push({id:uid(), storeId:currentStoreId, name, length:len, folder});
-    }
-    saveDB(); closeModal(); renderAll(); toast("Сохранено");
-  };
-  if(r){
-    document.getElementById("mRailDelete").onclick = ()=>{
-      if(!confirm(`Удалить рейл «${r.name}»?`)) return;
-      DB.rails = DB.rails.filter(x=>x.id !== r.id);
-      saveDB(); closeModal(); renderAll(); toast("Удалено");
-    };
+/* отделы (п.1.4) */
+function departmentsBreakdown(storeId){
+  const s = DB.sales[storeId] || {};
+  const deps = {};
+  for(const [path,f] of Object.entries(s)){
+    const parts = path.split("/");
+    const top = parts[0];
+    const kit = detectKit(top);
+    const name = parts[parts.length-1];
+    const gender = detectGender(name);
+    let key;
+    if(kit==="clothing") key = gender==="male" ? "Одежда · Мужской" :
+                            gender==="female" ? "Одежда · Женский" :
+                            gender==="kids" ? "Одежда · Детский" : "Одежда · Прочее";
+    else if(kit==="shoes") key = "Обувь";
+    else if(kit==="accessories") key = "Аксессуары";
+    else if(kit==="sale") key = "Распродажа";
+    else continue;
+    if(!deps[key]) deps[key] = { sum:0, folders:[] };
+    deps[key].sum += f.sum||0;
+    deps[key].folders.push({path, name, sum:f.sum||0});
   }
+  return Object.entries(deps).map(([k,v])=>({name:k, ...v}))
+    .sort((a,b)=>b.sum-a.sum);
 }
 
-function openTableModal(tableId){
-  const t = tableId ? DB.tables.find(x=>x.id === tableId) : null;
-  openModal(`
-    <button class="close-x" id="mClose">✕</button>
-    <h3>${t ? "Редактировать стол" : "Новый стол"}</h3>
-    <label class="field">Название
-      <input id="mTName" value="${t ? esc(t.name) : ""}" placeholder="Стол 1">
-    </label>
-    <label class="field">Папка / товар
-      <input id="mTFolder" value="${t ? esc(t.folder||"") : ""}" placeholder="Кофты">
-    </label>
-    <label class="field">Количество, шт.
-      <input id="mTQty" type="number" min="0" step="1" value="${t ? Number(t.qty)||0 : 0}">
-    </label>
-    <div class="form-actions">
-      ${t ? `<button class="btn-warn" id="mTDelete">Удалить</button>` : ""}
-      <button class="btn-primary" id="mTSave">Сохранить</button>
-    </div>
-  `);
-  document.getElementById("mClose").onclick = closeModal;
-  document.getElementById("mTSave").onclick = ()=>{
-    const name = document.getElementById("mTName").value.trim();
-    const folder = document.getElementById("mTFolder").value.trim();
-    const qty = parseInt(document.getElementById("mTQty").value) || 0;
-    if(!name){ toast("Введите название"); return; }
-    if(t){ t.name = name; t.folder = folder; t.qty = qty; }
-    else { DB.tables.push({id:uid(), storeId:currentStoreId, name, folder, qty}); }
-    saveDB(); closeModal(); renderAll(); toast("Сохранено");
-  };
-  if(t){
-    document.getElementById("mTDelete").onclick = ()=>{
-      if(!confirm(`Удалить стол «${t.name}»?`)) return;
-      DB.tables = DB.tables.filter(x=>x.id !== t.id);
-      saveDB(); closeModal(); renderAll(); toast("Удалено");
-    };
+/* дельты с прошлого периода (п.4.6) */
+function deltas(storeId, period){
+  const cur = DB.salesHistory[storeId]?.[period] || {};
+  const prev = DB.salesHistory[storeId]?.[prevPeriod(period)] || {};
+  const all = new Set([...Object.keys(cur), ...Object.keys(prev)]);
+  const out = [];
+  for(const path of all){
+    const c = cur[path]?.sum ?? cur[path] ?? 0;
+    const p = prev[path]?.sum ?? prev[path] ?? 0;
+    if(c||p) out.push({path, name:path.split("/").pop(), cur:c, prev:p, delta:c-p});
   }
+  return out.sort((a,b)=>b.delta-a.delta);
 }
 
-/* ============================================================
-   VIEW: DASHBOARD
-   ============================================================ */
-function renderDash(){
-  const rev = totalRevenue(currentStoreId);
-  document.getElementById("dashRevenue").textContent = fmtMoney(rev);
-  document.getElementById("dashRevenueSub").textContent = DB.meta.lastImport ? "Данные загружены: " + fmtDate(DB.meta.lastImport) : "Нет данных импорта";
+/* ---------- 6. РЕНДЕР: ГЛАВНАЯ ---------- */
+function renderHome(){
+  const store = currentStore();
+  if(!store) return renderNoStore();
+  const period = currentPeriod();
+  const s = DB.sales[store.id] || {};
 
-  // Доли папок
-  const sales = getSalesMap(currentStoreId);
-  const entries = Object.entries(sales).filter(([k,v])=>Number(v)>0).sort((a,b)=>b[1]-a[1]);
-  const total = entries.reduce((s,[,v])=>s+Number(v),0);
+  const revenue = totalRevenue(store.id, period);
+  const plan = autoPlan(store.id, period);
+  const planPct = plan.value ? pct(revenue, plan.value) : 0;
+  const forecastVal = forecast(store.id, period);
 
-  const palette = ["#1F3A2E","#B7C94A","#D9612E","#2E5442","#E5A948","#7A9B76","#A0522D","#5B8C5A","#C0392B","#8FA92B"];
-  const wrap = document.getElementById("donutWrap");
-  const legend = document.getElementById("donutLegend");
+  const kits = kitsBreakdown(store.id);
+  const totalKits = Object.values(kits).reduce((a,b)=>a+b,0) || 1;
+  const deps = departmentsBreakdown(store.id);
+  const totalDeps = deps.reduce((a,d)=>a+d.sum,0) || 1;
 
-  if(!entries.length || total <= 0){
-    wrap.innerHTML = `<div class="empty" style="padding:14px"><div class="muted">Нет данных. Импортируйте продажи из 1С.</div></div>`;
-    legend.innerHTML = "";
-  } else {
-    const size = 220, cx = size/2, cy = size/2, r = 80, sw = 34;
-    let angle = -Math.PI/2;
-    let svg = `<svg viewBox="0 0 ${size} ${size}" width="100%" style="max-width:240px;display:block;margin:0 auto">`;
-    entries.forEach(([folder, val], i)=>{
-      const frac = Number(val)/total;
-      const a2 = angle + frac * Math.PI * 2;
-      const x1 = cx + r * Math.cos(angle), y1 = cy + r * Math.sin(angle);
-      const x2 = cx + r * Math.cos(a2),   y2 = cy + r * Math.sin(a2);
-      const large = frac > 0.5 ? 1 : 0;
-      svg += `<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${palette[i%palette.length]}" stroke-width="${sw}" stroke-linecap="butt"/>`;
-      angle = a2;
-    });
-    svg += `<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="22" font-weight="800" fill="#1B1B1B">${fmtMoneyShort(total)}</text>`;
-    svg += `<text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="11" font-weight="600" fill="#6B6B6B">выручка</text>`;
-    svg += `</svg>`;
-    wrap.innerHTML = svg;
-    legend.innerHTML = "";
-    entries.forEach(([folder, val], i)=>{
-      const div = document.createElement("div");
-      div.className = "legend-item";
-      div.innerHTML = `<span class="legend-dot" style="background:${palette[i%palette.length]}"></span>
-        <span>${esc(folder)}</span>
-        <span class="val">${fmtMoney(val)} · ${(Number(val)/total*100).toFixed(0)}%</span>`;
-      legend.appendChild(div);
-    });
-  }
+  // свайп топ-5 по полу
+  const top5 = top5ByGender(store.id);
 
-  // Топ папок
-  const top = entries.slice(0,5);
-  document.getElementById("dashTopFolders").innerHTML = top.length
-    ? top.map(([f,v])=>`<div class="stat-row"><span class="lab">${esc(f)}</span><span class="v">${fmtMoney(v)}</span></div>`).join("")
-    : `<div class="muted">Нет данных</div>`;
+  const hm = heatmap(store.id);
 
-  // Столы
-  const tables = getTables(currentStoreId);
-  document.getElementById("dashTables").innerHTML = tables.length
-    ? tables.map(t=>`<div class="stat-row"><span class="lab">${esc(t.name)}: ${esc(t.folder||"—")}</span><span class="v">${Number(t.qty)||0} шт.</span></div>`).join("")
-    : `<div class="muted">Столов нет</div>`;
-}
-
-/* ============================================================
-   VIEW: PARETO
-   ============================================================ */
-function renderPareto(){
-  const rails = getRails(currentStoreId);
-  const revs = railRevenues(currentStoreId);
-  const total = Object.values(revs).reduce((a,b)=>a+b,0);
-  const topEl = document.getElementById("paretoTop");
-  const ballastEl = document.getElementById("paretoBallast");
-
-  if(!rails.length || total <= 0){
-    topEl.innerHTML = `<div class="muted">Нет данных.</div>`;
-    ballastEl.innerHTML = `<div class="muted">Нет данных.</div>`;
-    return;
-  }
-  const arr = rails.map(r=>({r, rev:revs[r.id]||0})).sort((a,b)=>b.rev-a.rev);
-  // 80%
-  let cum = 0, top = [];
-  for(const item of arr){
-    if(cum/total >= 0.8) break;
-    top.push(item);
-    cum += item.rev;
-  }
-  if(!top.length) top = [arr[0]];
-  // балласт 0-5%
-  const ballast = arr.filter(x => (x.rev/total) <= 0.05 && x.rev/total >= 0);
-
-  topEl.innerHTML = top.map(({r,rev})=>`
-    <div class="stat-row">
-      <span class="lab"><b style="color:var(--evergreen)">${esc(r.name)}</b> · ${esc(r.folder||"—")}</span>
-      <span class="v">${fmtMoney(rev)}</span>
-    </div>`).join("") +
-    `<div class="muted" style="margin-top:8px">${top.length} рейлов приносят ${(cum/total*100).toFixed(0)}% выручки</div>`;
-
-  ballastEl.innerHTML = ballast.length
-    ? ballast.map(({r,rev})=>`
-        <div class="stat-row">
-          <span class="lab"><b style="color:var(--cayenne)">${esc(r.name)}</b> · ${esc(r.folder||"—")}</span>
-          <span class="v">${fmtMoney(rev)} · ${((rev/total)*100).toFixed(1)}%</span>
-        </div>`).join("")
-    : `<div class="muted">Балласта нет — все рейлы работают.</div>`;
-}
-
-/* ============================================================
-   VIEW: BEFORE / AFTER
-   ============================================================ */
-function fixMove(){
-  DB.moves.push({id:uid(), storeId:currentStoreId, date: todayStr(), note:""});
-  saveDB();
-  toast("Перестановка зафиксирована: " + fmtDate(new Date()));
-  renderBeforeAfter();
-}
-
-/**
- * Возвращает сумму продаж за 7 дней до/после указанной даты
- * по всем папкам (только рейлы учитываются — здесь мы используем salesHistory,
- * где продажи по папкам за каждый день. Если истории нет — возвращаем null).
- */
-function get7dAround(storeId, dateStr){
-  const hist = DB.salesHistory[storeId];
-  if(!hist) return {before:null, after:null};
-  const base = new Date(dateStr + "T00:00:00");
-  let before = 0, after = 0, hasBefore = false, hasAfter = false;
-  for(let i=1;i<=7;i++){
-    const d1 = new Date(base); d1.setDate(base.getDate() - i);
-    const k1 = dateKey(d1);
-    if(hist[k1]) { before += sumObj(hist[k1]); hasBefore = true; }
-    const d2 = new Date(base); d2.setDate(base.getDate() + i);
-    const k2 = dateKey(d2);
-    if(hist[k2]) { after += sumObj(hist[k2]); hasAfter = true; }
-  }
-  return {before: hasBefore ? before : null, after: hasAfter ? after : null};
-}
-function dateKey(d){
-  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-}
-function sumObj(o){ return Object.values(o).reduce((a,b)=>a+(Number(b)||0),0); }
-
-function renderBeforeAfter(){
-  const moves = DB.moves.filter(m=>m.storeId===currentStoreId).sort((a,b)=>b.date.localeCompare(a.date));
-  const info = document.getElementById("lastMoveInfo");
-  info.textContent = moves.length ? "Последняя фиксация: " + fmtDate(moves[0].date) : "Перестановок пока не было";
-
-  const list = document.getElementById("baList");
-  const rails = getRails(currentStoreId);
-  if(!rails.length){ list.innerHTML = `<div class="muted">Добавьте рейлы.</div>`; return; }
-
-  const lastMove = moves[0];
-  if(!lastMove){
-    list.innerHTML = `<div class="muted">Сначала зафиксируйте перестановку.</div>`;
-    return;
-  }
-  const {before, after} = get7dAround(currentStoreId, lastMove.date);
-  if(before == null && after == null){
-    list.innerHTML = `<div class="muted">Нет истории продаж по дням для сравнения. Импортируйте дневные данные (в файле должна быть колонка с датой) или подождите накопления.</div>`;
-    return;
-  }
-  // Здесь у нас нет дневной разбивки по рейлам, поэтому показываем сводку по магазину.
-  // Но по ТЗ нужно сравнение по рейлу — распределяем сумму пропорционально длине рейлов
-  // (так как папки за период не сохраняем по рейлам, используем текущее распределение).
-  const revs = railRevenues(currentStoreId);
-  const totalRev = Object.values(revs).reduce((a,b)=>a+b,0);
-  list.innerHTML = "";
-  rails.forEach(r=>{
-    const share = totalRev > 0 ? (revs[r.id]||0)/totalRev : 0;
-    const b = before != null ? before * share : null;
-    const a = after  != null ? after  * share : null;
-    const len = Number(r.length)||0;
-    const perMB = (b != null && len>0) ? b/len : null;
-    const perMA = (a != null && len>0) ? a/len : null;
-    const delta = (perMB != null && perMA != null && perMB > 0) ? ((perMA - perMB)/perMB*100) : null;
-    const card = document.createElement("div");
-    card.className = "card";
-    card.style.marginBottom = "10px";
-    card.innerHTML = `
-      <div class="row-between">
+  let html = `
+    <div class="card">
+      <div class="row">
         <div>
-          <div style="font-weight:800">${esc(r.name)}</div>
-          <div class="muted">${esc(r.folder||"—")} · ${fmtNum(len)} м</div>
+          <div class="tiny muted">Выручка за ${periodLabel(period)}</div>
+          <div class="big emerald">${fmt(revenue)} ₽</div>
         </div>
-        ${delta!=null ? `<div class="pill" style="background:${delta>=0?'var(--yellow-green)':'var(--cayenne-soft)'};color:var(--evergreen)">${delta>=0?'+':''}${delta.toFixed(0)}%</div>` : `<div class="pill">—</div>`}
+        <div style="text-align:right">
+          <div class="tiny muted">План</div>
+          <div class="big" style="font-size:18px">${plan.value?fmt(plan.value)+" ₽":"—"}</div>
+        </div>
+      </div>
+      ${plan.value ? `
+        <div class="tiny muted" style="margin-top:4px">План: ${fmt(plan.value)} ₽ (${plan.label})</div>
+        <div class="progress"><i style="width:${Math.min(100,planPct)}%;background:${
+          planPct>=100?'var(--emerald)':planPct>=70?'var(--amber)':'var(--red)'}"></i></div>
+        <div class="tiny muted" style="margin-top:4px">Выполнение: ${planPct}%</div>
+      ` : `
+        <button class="btn block sm" style="margin-top:8px" onclick="openSetPlan()">Задать план</button>
+      `}
+      ${forecastVal ? `
+        <div class="progress" style="margin-top:10px"><i style="width:${
+          plan.value?Math.min(100,pct(forecastVal,plan.value)):100}%;background:var(--gray)"></i></div>
+        <div class="tiny muted" style="margin-top:4px">Прогноз: ${fmt(forecastVal)} ₽ (если так пойдёт)</div>
+      `:""}
+    </div>
+
+    <div class="card">
+      <h2>Киты</h2>
+      <div class="grid2">
+        ${["clothing","shoes","accessories","sale"].map(k=>`
+          <div class="kit">
+            <div class="tiny muted">${KIT_LABEL[k]}</div>
+            <b>${fmt(kits[k]||0)} ₽</b>
+            <div class="share">${pct(kits[k]||0,totalKits)}% от общей</div>
+            <div class="bar"><i style="width:${pct(kits[k]||0,totalKits)}%;background:var(--emerald)"></i></div>
+          </div>`).join("")}
+      </div>
+      ${kits.other ? `<div class="tiny muted" style="margin-top:8px">Прочее (служебные): ${fmt(kits.other)} ₽</div>`:""}
+    </div>
+
+    <div class="card">
+      <h2>Карта эффективности отделов</h2>
+      ${deps.length?deps.map(d=>`
+        <div style="margin-bottom:10px;cursor:pointer" onclick="goToTab2('${escapeHtml(d.name)}')">
+          <div class="row">
+            <b style="font-size:14px">${escapeHtml(d.name)}</b>
+            <span class="small">${fmt(d.sum)} ₽ · ${pct(d.sum,totalDeps)}%</span>
+          </div>
+          <div class="bar"><i style="width:${pct(d.sum,totalDeps)}%;background:var(--emerald)"></i></div>
+          <div class="tiny muted" style="margin-top:3px">
+            ${d.folders.slice(0,3).map(f=>escapeHtml(f.name)).join(" · ")}
+            ${d.folders.length>3?` · ещё ${d.folders.length-3}`:""}
+          </div>
+        </div>`).join(""):`<div class="empty">Нет данных</div>`}
+    </div>
+
+    <div class="card">
+      <h2>Свайп-топ-5</h2>
+      <div class="tabs" id="top5-tabs">
+        ${Object.keys(top5).map((g,i)=>`
+          <button class="${i===0?'active':''}" data-g="${g}"
+            onclick="switchTop5('${g}')">${genderLabel(g)}</button>`).join("")}
+      </div>
+      <div id="top5-body"></div>
+    </div>
+
+    <div class="card">
+      <h2>Δ с прошлого периода</h2>
+      ${renderDeltas(store.id, period)}
+    </div>
+  `;
+
+  document.getElementById("main").innerHTML = html;
+  const firstGender = Object.keys(top5)[0];
+  if(firstGender) switchTop5(firstGender);
+}
+
+function top5ByGender(storeId){
+  const all = foldersWithMetrics(storeId).filter(f=>!f.isService && !f.isReturn);
+  const groups = { male:[], female:[], kids:[], accessories:[] };
+  for(const f of all){
+    if(f.gender==="male") groups.male.push(f);
+    else if(f.gender==="female") groups.female.push(f);
+    else if(f.gender==="kids") groups.kids.push(f);
+  }
+  // аксессуары — отдельно по киту
+  for(const f of all){
+    const top = f.path.split("/")[0];
+    if(detectKit(top)==="accessories") groups.accessories.push(f);
+  }
+  const out = {};
+  for(const g of ["male","female","kids","accessories"]){
+    const arr = groups[g].slice().sort((a,b)=>b.sum-a.sum).slice(0,5);
+    if(arr.length) out[g] = { items:arr, total: groups[g].length };
+  }
+  return out;
+}
+function genderLabel(g){
+  return {male:"Мужской",female:"Женский",kids:"Детский",accessories:"Аксессуары"}[g]||g;
+}
+function switchTop5(g){
+  const store = currentStore(); if(!store) return;
+  document.querySelectorAll("#top5-tabs button").forEach(b=>{
+    b.classList.toggle("active", b.dataset.g===g);
+  });
+  const top5 = top5ByGender(store.id);
+  const data = top5[g];
+  if(!data){ document.getElementById("top5-body").innerHTML = `<div class="empty">Нет данных</div>`; return; }
+  const storeRevenue = totalRevenue(store.id, currentPeriod());
+  const topSum = data.items.reduce((a,b)=>a+b.sum,0);
+  const html = `
+    ${data.items.map((f,i)=>`
+      <div class="list-item" onclick="openFolderSheet('${escapeHtml(f.path)}')">
+        <div class="row">
+          <div><b>${i+1}. ${escapeHtml(f.name)}</b>
+            <div class="tiny muted">${fmtM(f.totalMeters)} м · ${fmt(f.perMeter)} ₽/м</div>
+          </div>
+          <div style="text-align:right"><b>${fmt(f.sum)} ₽</b>
+            <div class="tiny muted">${pct(f.sum,storeRevenue)}% магазина</div>
+          </div>
+        </div>
+      </div>`).join("")}
+    <div class="tiny muted" style="margin-top:8px">
+      Топ-${data.items.length} из ${data.total} папок категории «${genderLabel(g)}»
+    </div>
+    <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:10px">
+      <div class="small"><b>Спидометр:</b> Топ-${data.items.length} = ${pct(topSum,storeRevenue)}% выручки магазина</div>
+      <div class="tiny muted">= ${pct(topSum, data.items.reduce((a,b)=>a+b.sum,0))}% внутри категории</div>
+    </div>
+  `;
+  document.getElementById("top5-body").innerHTML = html;
+}
+
+function renderDeltas(storeId, period){
+  const d = deltas(storeId, period);
+  if(!d.length) return `<div class="empty">Нет данных за прошлый период</div>`;
+  const growth = d.filter(x=>x.delta>0).slice(0,3);
+  const drop = d.filter(x=>x.delta<0).slice(-3).reverse();
+  return `
+    ${growth.map(x=>`<div class="list-item"><span class="emerald">↑ ${escapeHtml(x.name)}</span>
+      <span style="float:right" class="emerald">+${fmt(x.delta)} ₽</span></div>`).join("")}
+    ${drop.map(x=>`<div class="list-item"><span class="red">↓ ${escapeHtml(x.name)}</span>
+      <span style="float:right" class="red">${fmt(x.delta)} ₽</span></div>`).join("")}
+  `;
+}
+
+function renderNoStore(){
+  document.getElementById("main").innerHTML = `
+    <div class="card">
+      <div class="empty">
+        <p>Магазинов пока нет.</p>
+        <button class="btn" onclick="openStoresSheet()">Создать магазин</button>
+      </div>
+    </div>`;
+}
+
+/* ---------- 7. РЕНДЕР: АНАЛИТИКА ---------- */
+let abcLevel = 3;
+let abcBy = "sum"; // "sum" | "meters"
+
+function renderAnalytics(){
+  const store = currentStore();
+  if(!store) return renderNoStore();
+  const period = currentPeriod();
+
+  const abc = computeABC(store.id, abcLevel, abcBy==="meters");
+
+  let html = `
+    <div class="card">
+      <div class="row">
+        <h2 style="margin:0">ABC-анализ</h2>
+        <div>
+          <select id="abc-level" class="input" style="width:auto;padding:4px 8px;font-size:12px"
+            onchange="abcLevel=+this.value;renderAnalytics()">
+            <option value="3" ${abcLevel===3?"selected":""}>3+</option>
+            <option value="4" ${abcLevel===4?"selected":""}>4+</option>
+            <option value="5" ${abcLevel===5?"selected":""}>5+</option>
+          </select>
+        </div>
+      </div>
+      <div class="tabs" style="margin-top:8px">
+        <button class="${abcBy==='sum'?'active':''}" onclick="abcBy='sum';renderAnalytics()">По выручке</button>
+        <button class="${abcBy==='meters'?'active':''}" onclick="abcBy='meters';renderAnalytics()">По метражу</button>
       </div>
       <div class="grid2" style="margin-top:10px">
-        <div><div class="muted" style="font-size:11px">7 дней ДО</div><div style="font-weight:800">${perMB!=null?fmtMoney(perMB)+" / м":"—"}</div></div>
-        <div><div class="muted" style="font-size:11px">7 дней ПОСЛЕ</div><div style="font-weight:800">${perMA!=null?fmtMoney(perMA)+" / м":"—"}</div></div>
-      </div>`;
-    list.appendChild(card);
-  });
+        ${["A","B","C"].map(g=>`
+          <div class="kit" style="background:${
+            g==='A'?'var(--emerald-l)':g==='B'?'var(--amber-l)':'var(--red-l)'}">
+            <div class="tiny">${g} ${g==='A'?'(80%)':g==='B'?'(15%)':'(5%)'}</div>
+            <b>${abc[g].length} папок</b>
+            <div class="tiny muted">${fmt(abc[g].reduce((s,x)=>s+(abcBy==='meters'?x.totalMeters:x.sum),0))} ${
+              abcBy==='meters'?'м':'₽'}</div>
+          </div>`).join("")}
+      </div>
+      ${abc.unplaced.length?`
+        <div style="margin-top:10px;padding:10px;background:var(--amber-l);border-radius:10px">
+          <b class="small">⚠ Требует привязки (${abc.unplaced.length})</b>
+          <div class="tiny">${abc.unplaced.map(f=>escapeHtml(f.name)).join(", ")}</div>
+        </div>`:""}
+    </div>
+
+    <div class="card">
+      <h2>Дерево папок</h2>
+      ${renderFolderTree(store.id)}
+    </div>
+
+    <div class="card">
+      <h2>Папки (сводная)</h2>
+      ${renderFoldersTable(store.id)}
+    </div>
+
+    <div class="card">
+      <h2>Рекомендации</h2>
+      <button class="btn ghost block sm" onclick="showRecommendations()">Показать рекомендации</button>
+      <div id="recs-body" style="margin-top:10px"></div>
+    </div>
+  `;
+  document.getElementById("main").innerHTML = html;
 }
 
-/* ============================================================
-   VIEW: NETWORK
-   ============================================================ */
-function renderNetwork(){
-  // собираем все папки
-  const folderSet = new Set();
-  DB.stores.forEach(s=>{
-    Object.keys(getSalesMap(s.id)).forEach(f=>folderSet.add(f));
-  });
-  const folders = Array.from(folderSet).sort();
-  const tbl = document.getElementById("networkTable");
-  if(!DB.stores.length || !folders.length){
-    tbl.innerHTML = `<div class="muted">Нет данных. Добавьте магазины и импортируйте продажи.</div>`;
-    document.getElementById("storeRating").innerHTML = "";
-    return;
-  }
-  let html = `<table class="tbl"><thead><tr><th>Магазин</th>${folders.map(f=>`<th style="text-align:right">${esc(f)}</th>`).join("")}<th style="text-align:right">Итого</th></tr></thead><tbody>`;
-  DB.stores.forEach(s=>{
-    const m = getSalesMap(s.id);
-    const total = totalRevenue(s.id);
-    html += `<tr><td><b>${esc(s.name)}</b></td>`;
-    folders.forEach(f=>{
-      html += `<td class="num">${m[f]?fmtMoneyShort(m[f]):"—"}</td>`;
-    });
-    html += `<td class="num">${fmtMoney(total)}</td></tr>`;
-  });
-  html += `</tbody></table>`;
-  tbl.innerHTML = html;
-
-  // рейтинг
-  const rating = DB.stores.map(s=>({s, rev:totalRevenue(s.id)})).sort((a,b)=>b.rev-a.rev);
-  document.getElementById("storeRating").innerHTML = rating.map(({s,rev},i)=>`
-    <div class="stat-row">
-      <span class="lab"><b>${i+1}.</b> ${esc(s.name)}</span>
-      <span class="v">${fmtMoney(rev)}</span>
+function renderFolderTree(storeId){
+  const s = DB.sales[storeId] || {};
+  const nodes = Object.entries(s).map(([path,f])=>({
+    path, name: path.split("/").pop(), sum: f.sum||0,
+    level: f.level||3, isService: f.isService, isReturn: f.isReturn
+  }));
+  if(!nodes.length) return `<div class="empty">Нет данных. Загрузите .xlsx</div>`;
+  const sorted = nodes.sort((a,b)=>b.sum-a.sum);
+  return sorted.map(n=>`
+    <div class="list-item" onclick="openFolderSheet('${escapeHtml(n.path)}')"
+      style="${n.isService?'color:var(--muted)':n.isReturn?'color:var(--red)':''}">
+      <div class="row">
+        <span>${n.isService?'⚠ ':n.isReturn?'↺ ':''}${escapeHtml(n.name)}</span>
+        <span>${fmt(n.sum)} ₽</span>
+      </div>
     </div>`).join("");
 }
 
-/* ============================================================
-   VIEW: STOP-LIST
-   ============================================================ */
-function renderStopList(){
-  const rails = getRails(currentStoreId);
-  const revs = railRevenues(currentStoreId);
-  const th = heatThresholds(currentStoreId);
-  const el = document.getElementById("stopList");
-  if(!rails.length){ el.innerHTML = `<div class="muted">Нет рейлов.</div>`; return; }
-
-  // группируем по папкам: если средняя выручка на метр по папке ниже "холодного" порога — стоп-лист
-  const byFolder = {};
-  rails.forEach(r=>{
-    const f = (r.folder||"").trim();
-    if(!f) return;
-    const len = Number(r.length)||0;
-    if(len<=0) return;
-    const perM = (revs[r.id]||0)/len;
-    (byFolder[f] = byFolder[f] || []).push({perM, len, rev:revs[r.id]||0});
-  });
-  const items = Object.keys(byFolder).map(f=>{
-    const arr = byFolder[f];
-    const totalLen = arr.reduce((a,x)=>a+x.len,0);
-    const totalRev = arr.reduce((a,x)=>a+x.rev,0);
-    const avgPerM = totalLen>0 ? totalRev/totalLen : 0;
-    return {folder:f, avgPerM, totalRev, totalLen, count:arr.length};
-  }).sort((a,b)=>a.avgPerM - b.avgPerM);
-
-  const cold = items.filter(x=> x.avgPerM <= th.cold);
-  if(!cold.length){
-    el.innerHTML = `<div class="empty"><div class="big">✅</div><div>Нет папок в стоп-листе — все работают выше «холодного» порога.</div></div>`;
-    return;
-  }
-  el.innerHTML = `<div class="muted" style="margin-bottom:10px">Порог «холодно» ≤ ${fmtMoney(th.cold)} / м</div>` +
-    cold.map(x=>`
-      <div class="card" style="margin-bottom:10px;border-left:6px solid var(--red)">
-        <div class="row-between">
-          <div>
-            <div style="font-weight:800">${esc(x.folder)}</div>
-            <div class="muted">${x.count} рейлов · ${fmtNum(x.totalLen)} м · ${fmtMoney(x.totalRev)}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-weight:800;color:var(--red)">${fmtMoney(x.avgPerM)}</div>
-            <div class="muted" style="font-size:11px">на метр</div>
-          </div>
-        </div>
-        <div class="muted" style="margin-top:8px;font-size:12px">⛔ Закупщику: остановить закупку «${esc(x.folder)}».</div>
-      </div>`).join("");
+function renderFoldersTable(storeId){
+  const folders = foldersWithMetrics(storeId).sort((a,b)=>b.sum-a.sum);
+  if(!folders.length) return `<div class="empty">Нет данных</div>`;
+  return `<div style="overflow-x:auto"><table>
+    <thead><tr><th>Папка</th><th>Выручка</th><th>Метры</th><th>₽/м</th></tr></thead>
+    <tbody>${folders.map(f=>`
+      <tr onclick="openFolderSheet('${escapeHtml(f.path)}')" style="cursor:pointer">
+        <td>${escapeHtml(f.name)}</td>
+        <td>${fmt(f.sum)}</td>
+        <td>${fmtM(f.totalMeters)}</td>
+        <td>${fmt(f.perMeter)}</td>
+      </tr>`).join("")}</tbody></table></div>`;
 }
 
-/* ============================================================
-   VIEW: SETTINGS
-   ============================================================ */
-function renderSettings(){
-  const admin = document.getElementById("storesAdmin");
-  admin.innerHTML = DB.stores.map(s=>`
-    <div class="stat-row">
-      <span class="lab"><b>${esc(s.name)}</b></span>
-      <span class="v">
-        <button class="btn-sm btn-ghost" data-edit="${s.id}" style="padding:4px 10px;font-size:12px">✏️</button>
-        <button class="btn-sm btn-warn" data-del="${s.id}" style="padding:4px 10px;font-size:12px">✕</button>
-      </span>
-    </div>`).join("");
-  admin.querySelectorAll("[data-edit]").forEach(b=>{
-    b.onclick = ()=>openStoreModal(b.dataset.edit);
-  });
-  admin.querySelectorAll("[data-del]").forEach(b=>{
-    b.onclick = ()=>{
-      const s = getStore(b.dataset.del);
-      if(!s) return;
-      if(!confirm(`Удалить магазин «${s.name}» и все его данные?`)) return;
-      DB.stores = DB.stores.filter(x=>x.id !== s.id);
-      DB.rails = DB.rails.filter(r=>r.storeId !== s.id);
-      DB.tables = DB.tables.filter(t=>t.storeId !== s.id);
-      delete DB.sales[s.id];
-      delete DB.salesHistory[s.id];
-      DB.moves = DB.moves.filter(m=>m.storeId !== s.id);
-      if(!DB.stores.length){ DB.stores.push({id:uid(), name:"Основной магазин"}); }
-      if(!getStore(currentStoreId)) currentStoreId = DB.stores[0].id;
-      saveDB(); renderAll(); toast("Удалено");
-    };
-  });
-}
+function showRecommendations(){
+  const store = currentStore(); if(!store) return;
+  const folders = foldersWithMetrics(store.id).filter(f=>!f.unplaced && !f.isService && !f.isReturn);
+  const hm = heatmap(store.id);
+  const rails = DB.rails.filter(r=>r.storeId===store.id);
+  const avgLen = rails.length ? rails.reduce((a,r)=>a+(+r.length||0),0)/rails.length : 0;
+  // пороги (№4)
+  let longTh, shortTh;
+  if(rails.length>=5){
+    const lens = rails.map(r=>+r.length||0).sort((a,b)=>a-b);
+    const med = lens[Math.floor(lens.length/2)];
+    longTh = med; shortTh = med;
+  } else { longTh = 4; shortTh = 1; }
 
-/* ============================================================
-   ИМПОРТ 1С (Excel/CSV через SheetJS)
-   ============================================================ */
-function onFileImport(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev)=>{
-    try{
-      const data = new Uint8Array(ev.target.result);
-      const wb = XLSX.read(data, {type:"array", cellDates:true});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:"", raw:false});
-      if(!rows.length){ toast("Файл пуст"); return; }
-      // ищем колонки
-      const first = rows[0];
-      const keys = Object.keys(first);
-      const folderKey = keys.find(k=>/папк|груп|категор|folder|group|category/i.test(k));
-      const sumKey = keys.find(k=>/сумм|продаж|выручк|sum|revenue|amount|итог/i.test(k));
-      const dateKey = keys.find(k=>/дат|date|период/i.test(k));
-      if(!folderKey || !sumKey){
-        toast("Не найдены колонки «Папка» и «Сумма продаж»");
-        return;
-      }
-      // накапливаем
-      const sales = DB.sales[currentStoreId] || {};
-      const history = DB.salesHistory[currentStoreId] || {};
-      let count = 0;
-      rows.forEach(row=>{
-        const folder = String(row[folderKey]||"").trim();
-        if(!folder) return;
-        const val = parseNum(row[sumKey]);
-        if(!isFinite(val)) return;
-        sales[folder] = (sales[folder]||0) + val;
-        count++;
-        if(dateKey && row[dateKey]){
-          const d = parseDate(row[dateKey]);
-          if(d){
-            const k = dateKey2(d);
-            if(!history[k]) history[k] = {};
-            history[k][folder] = (history[k][folder]||0) + val;
-          }
-        }
-      });
-      DB.sales[currentStoreId] = sales;
-      DB.salesHistory[currentStoreId] = history;
-      DB.meta.lastImport = new Date().toISOString();
-      saveDB();
-      document.getElementById("importResult").innerHTML =
-        `<div class="pill" style="background:var(--yellow-green);color:var(--evergreen)">✅ Загружено ${count} строк · ${Object.keys(sales).length} папок</div>`;
-      toast("Импорт успешен");
-      renderAll();
-    }catch(err){
-      console.error(err);
-      toast("Ошибка чтения файла: " + err.message);
-    }finally{
-      e.target.value = "";
+  const recs = [];
+  for(const f of folders){
+    const cls = heatClass(f.perMeter, hm);
+    const fr = rails.filter(r=>r.folder===f.path);
+    for(const r of fr){
+      const len = +r.length||0;
+      if(cls==="cold" && len>=longTh)
+        recs.push(`Переместить «${f.name}» с длинного рейла ${r.code} (${fmtM(len)} м) на 1 м`);
+      if(cls==="hot" && len<=shortTh)
+        recs.push(`Расширить «${f.name}» на рейле ${r.code} до 2 м`);
     }
-  };
-  reader.readAsArrayBuffer(file);
-}
-function parseNum(v){
-  if(typeof v === "number") return v;
-  if(v == null) return NaN;
-  const s = String(v).replace(/\s/g,"").replace(",",".").replace(/[₽рRUB]/gi,"").replace(/[^\d.\-]/g,"");
-  return parseFloat(s);
-}
-function parseDate(v){
-  if(v instanceof Date && !isNaN(v)) return v;
-  const s = String(v).trim();
-  let m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
-  if(m){
-    let y = parseInt(m[3]); if(y<100) y += 2000;
-    return new Date(y, parseInt(m[2])-1, parseInt(m[1]));
   }
-  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if(m) return new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
-  const d = new Date(s);
-  return isNaN(d) ? null : d;
-}
-function dateKey2(d){
-  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  document.getElementById("recs-body").innerHTML = recs.length
+    ? recs.slice(0,20).map(r=>`<div class="list-item small">${escapeHtml(r)}</div>`).join("")
+    : `<div class="empty">Рекомендаций нет</div>`;
 }
 
-/* ============================================================
-   BACKUP / RESTORE
-   ============================================================ */
-function exportJSON(){
-  const data = JSON.stringify(DB, null, 2);
-  const blob = new Blob([data], {type:"application/json"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "railmap_backup_" + todayStr() + ".json";
-  a.click();
-  URL.revokeObjectURL(url);
-  toast("Резервная копия сохранена");
+/* ---------- 8. РЕНДЕР: РЕЙЛЫ И СТЕНЫ ---------- */
+function renderRailsWalls(){
+  const store = currentStore();
+  if(!store) return renderNoStore();
+  const period = currentPeriod();
+
+  // блокировка периода (M6)
+  if(store.createdAt && store.createdAt.slice(0,10) < DATE_BLOCK && period < "2026-10"){
+    document.getElementById("main").innerHTML = `
+      <div class="card"><div class="empty">
+        <p><b>Рейлы считаются с 1 октября 2026.</b></p>
+        <p class="small">Период ${periodLabel(period)} — архив. Данные скрыты.</p>
+      </div></div>`;
+    return;
+  }
+
+  const mode = DB.meta.ui.tab3Mode || "dashboard";
+
+  let html = `
+    <div class="card">
+      <div class="tabs" style="margin:0">
+        <button class="${mode==='dashboard'?'active':''}"
+          onclick="DB.meta.ui.tab3Mode='dashboard';dbSave();renderRailsWalls()">Дашборд</button>
+        <button class="${mode==='catalog'?'active':''}"
+          onclick="DB.meta.ui.tab3Mode='catalog';dbSave();renderRailsWalls()">Справочник</button>
+      </div>
+    </div>
+  `;
+  if(mode==="dashboard") html += renderRailsDashboard(store.id);
+  else html += renderRailsCatalog(store.id);
+
+  html += `
+    <div class="card">
+      <h2>Действия</h2>
+      <div class="grid2">
+        <button class="btn ghost sm" onclick="openAddRow()">+ Ряд</button>
+        <button class="btn ghost sm" onclick="openAddWall()">+ Стена</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("main").innerHTML = html;
 }
-function importJSON(e){
-  const file = e.target.files[0];
-  if(!file) return;
+
+function renderRailsDashboard(storeId){
+  const rails = DB.rails.filter(r=>r.storeId===storeId);
+  const walls = DB.walls.filter(w=>w.storeId===storeId);
+  const hm = heatmap(storeId);
+
+  const all = [];
+  for(const r of rails){
+    const d = distributeRevenue(storeId, r.folder);
+    if(!d) continue;
+    const rr = d.rails.find(x=>x.id===r.id);
+    if(rr) all.push({...rr, folder:r.folder, name:r.code});
+  }
+  for(const w of walls){
+    const d = distributeRevenue(storeId, w.folder);
+    if(!d) continue;
+    const ww = d.walls.find(x=>x.id===w.id);
+    if(ww) all.push({kind:"wall", id:w.id, code:w.code, folder:w.folder,
+      length:ww.length, perMeter:ww.perMeterFloor, revenue:ww.revenue, name:w.code});
+  }
+  if(!all.length){
+    return `<div class="card"><div class="empty">
+      Нет рейлов. Добавьте ряд и рейл, чтобы увидеть эффективность метра.
+    </div></div>`;
+  }
+  const sorted = all.slice().sort((a,b)=>b.perMeter-a.perMeter);
+  const best = sorted[0], worst = sorted[sorted.length-1];
+  const avg = sorted.reduce((s,x)=>s+x.perMeter,0)/sorted.length;
+
+  let html = `
+    <div class="card">
+      <h2>Hero</h2>
+      <div class="grid2">
+        <div class="kit" style="background:var(--emerald-l)">
+          <div class="tiny">Лучший</div>
+          <b>${escapeHtml(best.name)}</b>
+          <div class="small">${fmt(best.perMeter)} ₽/м</div>
+          <div class="tiny emerald">+${pct(best.perMeter-avg,avg)}% к среднему</div>
+        </div>
+        <div class="kit" style="background:var(--red-l)">
+          <div class="tiny">Худший</div>
+          <b>${escapeHtml(worst.name)}</b>
+          <div class="small">${fmt(worst.perMeter)} ₽/м</div>
+          <div class="tiny red">${pct(worst.perMeter-avg,avg)}% к среднему</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Рейлы и стены по ₽/м</h2>
+      ${sorted.map(x=>`
+        <div class="list-item">
+          <div class="row">
+            <div>
+              <span class="heat-dot" style="background:${
+                heatClass(x.perMeter,hm)==='hot'?'var(--emerald)':
+                heatClass(x.perMeter,hm)==='cold'?'var(--red)':'var(--amber)'}"></span>
+              <b>${escapeHtml(x.name)}</b>
+              <span class="tiny muted">${x.kind==='wall'?'стена':'рейл'} · ${fmtM(x.length)} м</span>
+            </div>
+            <div style="text-align:right">
+              <b>${fmt(x.perMeter)} ₽/м</b>
+              <div class="tiny muted">${fmt(x.revenue)} ₽</div>
+            </div>
+          </div>
+        </div>`).join("")}
+    </div>
+    <div class="card">
+      <h2>До / После</h2>
+      <button class="btn ghost block sm" onclick="fixMove()">📌 Зафиксировать перестановку</button>
+      ${renderMoves(storeId)}
+    </div>
+  `;
+  return html;
+}
+
+function renderMoves(storeId){
+  const moves = DB.moves.filter(m=>m.storeId===storeId).sort((a,b)=>b.date.localeCompare(a.date));
+  if(!moves.length) return `<div class="tiny muted" style="margin-top:8px">Перестановок пока нет</div>`;
+  return moves.slice(0,3).map(m=>`
+    <div class="list-item small">
+      <b>${new Date(m.date).toLocaleDateString("ru-RU")}</b>
+      <span class="tiny muted">снапшот: ${m.snapshot.rails.length} рейлов, ${m.snapshot.walls.length} стен</span>
+    </div>`).join("");
+}
+
+function renderRailsCatalog(storeId){
+  const rails = DB.rails.filter(r=>r.storeId===storeId);
+  const walls = DB.walls.filter(w=>w.storeId===storeId);
+  const hm = heatmap(storeId);
+  const rows = [];
+  for(const r of rails){
+    const d = distributeRevenue(storeId, r.folder);
+    const rr = d?.rails.find(x=>x.id===r.id);
+    rows.push({kind:"rail", id:r.id, rowId:r.rowId, code:r.code, side:r.side,
+      length:r.length, folder:r.folder, revenue:rr?.revenue||0, perMeter:rr?.perMeter||0});
+  }
+  for(const w of walls){
+    const d = distributeRevenue(storeId, w.folder);
+    const ww = d?.walls.find(x=>x.id===w.id);
+    rows.push({kind:"wall", id:w.id, rowId:w.rowId, code:w.code, side:"—",
+      length:w.length, folder:w.folder, revenue:ww?.revenue||0, perMeter:ww?.perMeterFloor||0});
+  }
+  if(!rows.length) return `<div class="card"><div class="empty">Пусто. Добавьте ряд, рейл или стену.</div></div>`;
+  return `<div class="card"><div style="overflow-x:auto"><table>
+    <thead><tr><th>Ряд</th><th>Стор.</th><th>Код</th><th>Длина</th><th>Папка</th><th>₽/м</th><th></th></tr></thead>
+    <tbody>${rows.map(x=>{
+      const row = DB.rows.find(r=>r.id===x.rowId);
+      return `<tr>
+        <td>${escapeHtml(row?.code||"—")}</td>
+        <td>${x.side}</td>
+        <td>${escapeHtml(x.code)}</td>
+        <td>${fmtM(x.length)}</td>
+        <td class="tiny">${escapeHtml(x.folder?.split("/").pop()||"—")}</td>
+        <td>${fmt(x.perMeter)}</td>
+        <td><button class="btn sm danger" onclick="deleteEntity('${x.kind}','${x.id}')">✕</button></td>
+      </tr>`;
+    }).join("")}</tbody></table></div></div>`;
+}
+
+/* ---------- 9. РЕНДЕР: НАСТРОЙКИ ---------- */
+function renderSettings(){
+  const store = currentStore();
+  let html = `
+    <div class="card">
+      <h2>Импорт 1С</h2>
+      <input type="file" id="xlsx-input" accept=".xlsx" style="display:none"
+        onchange="handleFile(event)">
+      <button class="btn block" onclick="document.getElementById('xlsx-input').click()">
+        Загрузить .xlsx
+      </button>
+      <button class="btn ghost block sm" style="margin-top:8px" onclick="undoLastImport()">
+        ↶ Отменить последний импорт
+      </button>
+      <div class="tiny muted" style="margin-top:6px">
+        ${store?.id && DB.meta.lastImport[store.id]
+          ? `Последний импорт: ${DB.meta.lastImport[store.id].date.slice(0,10)} · ${DB.meta.lastImport[store.id].period}`
+          : "Импортов ещё не было"}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Магазины</h2>
+      ${DB.stores.map(s=>`
+        <div class="list-item">
+          <div class="row">
+            <div><b>${escapeHtml(s.name)}</b>
+              <div class="tiny muted">создан ${s.createdAt?.slice(0,10)||"—"}</div>
+            </div>
+            <div>
+              <button class="btn sm ghost" onclick="openEditStore('${s.id}')">✏️</button>
+              <button class="btn sm danger" onclick="deleteStore('${s.id}')">✕</button>
+            </div>
+          </div>
+        </div>`).join("") || `<div class="empty">Нет магазинов</div>`}
+      <button class="btn block sm" style="margin-top:8px" onclick="openAddStore()">+ Добавить магазин</button>
+    </div>
+
+    <div class="card">
+      <h2>Экспорт / Импорт</h2>
+      <button class="btn ghost block sm" onclick="exportExcel()">Сохранить экран в Excel</button>
+      <button class="btn ghost block sm" style="margin-top:6px" onclick="exportPdf()">Сохранить экран в PDF</button>
+      <button class="btn ghost block sm" style="margin-top:6px" onclick="exportJson()">Резервная копия JSON</button>
+      <button class="btn ghost block sm" style="margin-top:6px" onclick="document.getElementById('json-input').click()">Загрузить JSON</button>
+      <input type="file" id="json-input" accept=".json" style="display:none" onchange="importJson(event)">
+      <button class="btn ghost block sm" style="margin-top:6px" onclick="buyerReport()">Отчёт закупщику (PDF)</button>
+    </div>
+
+    <div class="card">
+      <h2>PIN</h2>
+      <button class="btn ghost block sm" onclick="changePin()">Сменить PIN</button>
+      <button class="btn danger block sm" style="margin-top:6px" onclick="resetAll()">
+        Забыли PIN? Сбросить все данные
+      </button>
+    </div>
+
+    <div class="card">
+      <h2>Опасная зона</h2>
+      <button class="btn danger block sm" onclick="clearAll()">Очистить все данные</button>
+    </div>
+  `;
+  document.getElementById("main").innerHTML = html;
+}
+
+/* ---------- 10. МОДАЛКИ ---------- */
+function openModal(html){
+  const root = document.getElementById("modal-root");
+  root.innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="position:relative">${html}</div></div>`;
+}
+function closeModal(){ document.getElementById("modal-root").innerHTML = ""; }
+
+/* магазины */
+function openStoresSheet(){
+  const items = DB.stores.map(s=>`
+    <div class="list-item" onclick="selectStore('${s.id}')">
+      <b>${escapeHtml(s.name)}</b>
+      <div class="tiny muted">создан ${s.createdAt?.slice(0,10)||"—"}</div>
+    </div>`).join("") || `<div class="empty">Нет магазинов</div>`;
+  openModal(`
+    <button class="close" onclick="closeModal()">×</button>
+    <h3>Магазины</h3>
+    ${items}
+    <button class="btn block sm" style="margin-top:10px" onclick="openAddStore()">+ Новый магазин</button>
+  `);
+}
+function selectStore(id){
+  DB.meta.ui.storeId = id; dbSave(); closeModal(); render();
+}
+function openAddStore(){
+  const name = prompt("Название магазина:");
+  if(!name) return;
+  const store = { id:uid(), name, createdAt:new Date().toISOString(),
+    plan:{value:0, source:"auto"} };
+  DB.stores.push(store);
+  DB.meta.ui.storeId = store.id;
+  dbSave(); closeModal(); render();
+}
+function openEditStore(id){
+  const s = DB.stores.find(x=>x.id===id); if(!s) return;
+  const name = prompt("Название магазина:", s.name);
+  if(name){ s.name = name; dbSave(); render(); }
+}
+function deleteStore(id){
+  if(!confirm("Удалить магазин и ВСЕ его данные (ряды, рейлы, стены, продажи, историю)?")) return;
+  DB.stores = DB.stores.filter(s=>s.id!==id);
+  DB.rows = DB.rows.filter(r=>r.storeId!==id);
+  DB.rails = DB.rails.filter(r=>r.storeId!==id);
+  DB.walls = DB.walls.filter(w=>w.storeId!==id);
+  DB.brackets = DB.brackets.filter(b=>!DB.walls.some(w=>w.id===b.wallId));
+  DB.tables = DB.tables.filter(t=>t.storeId!==id);
+  delete DB.sales[id]; delete DB.salesHistory[id];
+  DB.moves = DB.moves.filter(m=>m.storeId!==id);
+  delete DB.meta.lastImport[id]; delete DB.meta.lastImportBackup[id];
+  if(DB.meta.ui.storeId===id) DB.meta.ui.storeId = DB.stores[0]?.id;
+  dbSave(); render();
+}
+
+/* план */
+function openSetPlan(){
+  const store = currentStore(); if(!store) return;
+  const v = prompt("План на месяц, ₽:", store.plan?.value || 0);
+  if(v==null) return;
+  const n = +v;
+  if(isNaN(n)) return alert("Введите число");
+  store.plan = { value:n, source:"manual" };
+  dbSave(); render();
+}
+
+/* импорт */
+let pendingImport = null;
+
+function handleFile(ev){
+  const f = ev.target.files[0]; if(!f) return;
   const reader = new FileReader();
-  reader.onload = (ev)=>{
+  reader.onload = e=>{
     try{
-      const d = JSON.parse(ev.target.result);
-      if(!d || !Array.isArray(d.stores)) throw new Error("Неверный формат");
-      DB = Object.assign(JSON.parse(JSON.stringify(DEFAULT_DB)), d);
-      currentStoreId = DB.stores.length ? DB.stores[0].id : null;
-      saveDB();
-      renderAll();
-      toast("Данные восстановлены");
-    }catch(err){
-      toast("Ошибка: " + err.message);
-    }finally{ e.target.value = ""; }
+      const parsed = parseXlsx(e.target.result);
+      const folders = nodesToFolders(parsed);
+      const fromName = periodFromFilename(f.name);
+      pendingImport = { parsed, folders, fromName, filename:f.name };
+      showImportPreview();
+    }catch(err){ alert("Ошибка парсинга: "+err.message); }
   };
-  reader.readAsText(file);
+  reader.readAsArrayBuffer(f);
+  ev.target.value = "";
 }
 
-/* ============================================================
-   PDF-экспорт (печатная версия через window.print)
-   ============================================================ */
-function exportPDF(){
-  const store = getStore(currentStoreId);
-  if(!store){ toast("Нет магазина"); return; }
-  const rev = totalRevenue(currentStoreId);
-  const rails = getRails(currentStoreId);
-  const revs = railRevenues(currentStoreId);
-  const th = heatThresholds(currentStoreId);
-  const tables = getTables(currentStoreId);
-  const sales = getSalesMap(currentStoreId);
-  const entries = Object.entries(sales).filter(([,v])=>Number(v)>0).sort((a,b)=>b[1]-a[1]);
-
-  const win = window.open("", "_blank");
-  if(!win){ toast("Разрешите всплывающие окна для PDF"); return; }
-  const rowsHtml = rails.slice().sort((a,b)=>{
-    return (revs[b.id]||0)/(Number(b.length)||1) - (revs[a.id]||0)/(Number(a.length)||1);
-  }).map(r=>{
-    const len = Number(r.length)||0;
-    const v = revs[r.id]||0;
-    const perM = len>0?v/len:0;
-    return `<tr>
-      <td>${esc(r.name)}</td>
-      <td>${esc(r.folder||"—")}</td>
-      <td style="text-align:right">${fmtNum(len)}</td>
-      <td style="text-align:right">${fmtMoney(v)}</td>
-      <td style="text-align:right">${fmtMoney(perM)}</td>
-    </tr>`;
-  }).join("");
-  const foldersHtml = entries.map(([f,v])=>`<tr><td>${esc(f)}</td><td style="text-align:right">${fmtMoney(v)}</td></tr>`).join("");
-  const tablesHtml = tables.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc(t.folder||"—")}</td><td style="text-align:right">${Number(t.qty)||0}</td></tr>`).join("");
-
-  win.document.write(`<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Отчёт ${esc(store.name)}</title>
-  <style>
-    body{font-family:'Urbanist',Arial,sans-serif;padding:28px;color:#1B1B1B}
-    h1{font-size:22px;margin-bottom:4px}
-    .muted{color:#6B6B6B;font-size:12px}
-    table{width:100%;border-collapse:collapse;margin:14px 0;font-size:12px}
-    th,td{border-bottom:1px solid #EAE3D3;padding:7px;text-align:left}
-    th{font-size:10px;text-transform:uppercase;color:#6B6B6B}
-    .kpi{display:flex;gap:16px;margin:14px 0}
-    .kpi div{border:1px solid #EAE3D3;border-radius:10px;padding:10px 14px}
-    .kpi b{display:block;font-size:18px}
-    @media print{body{padding:0}}
-  </style></head><body>
-  <h1>Рейл-Карта 4.0 · ${esc(store.name)}</h1>
-  <div class="muted">Отчёт сформирован ${fmtDate(new Date())}</div>
-  <div class="kpi">
-    <div><span class="muted">Выручка</span><b>${fmtMoney(rev)}</b></div>
-    <div><span class="muted">Метров</span><b>${fmtNum(totalMeters(currentStoreId))}</b></div>
-    <div><span class="muted">₽ / метр</span><b>${totalMeters(currentStoreId)>0?fmtMoney(rev/totalMeters(currentStoreId)):"—"}</b></div>
-  </div>
-  <h2>Рейлы</h2>
-  <table><thead><tr><th>Рейл</th><th>Папка</th><th style="text-align:right">М</th><th style="text-align:right">Выручка</th><th style="text-align:right">₽/м</th></tr></thead>
-  <tbody>${rowsHtml || `<tr><td colspan="5" class="muted">Нет рейлов</td></tr>`}</tbody></table>
-  <h2>Папки</h2>
-  <table><thead><tr><th>Папка</th><th style="text-align:right">Выручка</th></tr></thead>
-  <tbody>${foldersHtml || `<tr><td colspan="2" class="muted">Нет данных</td></tr>`}</tbody></table>
-  <h2>Столы</h2>
-  <table><thead><tr><th>Стол</th><th>Товар</th><th style="text-align:right">Шт.</th></tr></thead>
-  <tbody>${tablesHtml || `<tr><td colspan="3" class="muted">Нет столов</td></tr>`}</tbody></table>
-  <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script>
-  </body></html>`);
-  win.document.close();
+function showImportPreview(){
+  const { parsed, folders, fromName } = pendingImport;
+  const services = folders.filter(f=>f.isService).length;
+  const returns = folders.filter(f=>f.isReturn).length;
+  const first10 = parsed.nodes.slice(0,10).map(n=>`
+    <div class="tiny" style="padding-left:${n.level*12}px;font-family:monospace">
+      L${n.level} · ${escapeHtml(n.name)} · ${fmt(n.sum)} ₽
+    </div>`).join("");
+  const conv = parsed.convergence;
+  const store = currentStore();
+  openModal(`
+    <button class="close" onclick="closeModal()">×</button>
+    <h3>Предпросмотр импорта</h3>
+    <div class="small" style="margin-bottom:8px">
+      Найдено <b>${folders.length}</b> папок · служебных: <b>${services}</b> · возвратов: <b>${returns}</b>
+    </div>
+    ${parsed.flat ? `<div class="tiny" style="color:var(--amber)">⚠ Похоже, это плоский файл. Иерархия не определена.</div>`:""}
+    ${conv ? `<div class="tiny" style="color:${conv.ok?'var(--emerald)':'var(--red)'}">
+      ${conv.ok?'✓':'⚠'} Сходимость: ожидалось ${fmt(conv.expected)}, получено ${fmt(conv.got)}
+    </div>`:""}
+    <div style="max-height:200px;overflow:auto;margin:10px 0;background:var(--bg);padding:8px;border-radius:8px">
+      ${first10}
+    </div>
+    ${fromName ? `<div class="small">Магазин: <b>${escapeHtml(fromName.storeName)}</b>, период: <b>${fromName.period}</b></div>`:
+      `<div class="small" style="color:var(--amber)">Период не распознан из имени файла</div>
+       <div class="grid2" style="margin-top:8px">
+         <select id="imp-store" class="input">
+           ${DB.stores.map(s=>`<option value="${s.id}" ${s.id===store?.id?"selected":""}>${escapeHtml(s.name)}</option>`).join("")}
+         </select>
+         <input id="imp-period" class="input" placeholder="YYYY-MM" value="${defaultPeriod()}">
+       </div>`}
+    <div style="margin-top:10px">
+      <div class="tiny muted">Режим:</div>
+      <div class="grid2" style="margin-top:4px">
+        <button class="btn sm" onclick="applyImport('accumulate')">Накопить</button>
+        <button class="btn sm ghost" onclick="applyImport('replace_period')">Заменить за период</button>
+        <button class="btn sm danger" onclick="applyImport('replace_all')">Заменить всё</button>
+      </div>
+    </div>
+  `);
 }
 
-/* ============================================================
-   PIN save / wipe
-   ============================================================ */
-function saveNewPin(){
-  const v = document.getElementById("pinNew").value.trim();
-  if(!/^\d{4,8}$/.test(v)){ toast("PIN должен быть 4–8 цифр"); return; }
-  setPin(v);
-  document.getElementById("pinNew").value = "";
-  toast("PIN обновлён");
-}
-function wipeAll(){
-  if(!confirm("Удалить ВСЕ данные без возможности восстановления?")) return;
-  if(!confirm("Точно? Это действие необратимо.")) return;
-  localStorage.removeItem(DB_KEY);
-  localStorage.removeItem(PIN_KEY);
-  sessionStorage.removeItem(SESSION_KEY);
-  DB = JSON.parse(JSON.stringify(DEFAULT_DB));
-  currentStoreId = null;
-  location.reload();
+function applyImport(mode){
+  const store = currentStore();
+  let storeId = store?.id;
+  let period = pendingImport.fromName?.period;
+
+  if(!pendingImport.fromName){
+    storeId = document.getElementById("imp-store").value;
+    period = document.getElementById("imp-period").value;
+    if(!/^\d{4}-\d{2}$/.test(period)) return alert("Период в формате YYYY-MM");
+  }
+  if(!storeId) return alert("Сначала создайте магазин");
+
+  // бэкап
+  DB.meta.lastImportBackup[storeId] = JSON.parse(JSON.stringify({
+    sales: DB.sales[storeId] || {},
+    salesHistory: DB.salesHistory[storeId] || {}
+  }));
+
+  // подготовка
+  if(mode==="replace_all"){
+    DB.sales[storeId] = {};
+    DB.salesHistory[storeId] = DB.salesHistory[storeId] || {};
+    DB.salesHistory[storeId][period] = {};
+  } else if(mode==="replace_period"){
+    DB.salesHistory[storeId] = DB.salesHistory[storeId] || {};
+    DB.salesHistory[storeId][period] = {};
+  } else {
+    DB.salesHistory[storeId] = DB.salesHistory[storeId] || {};
+    DB.salesHistory[storeId][period] = DB.salesHistory[storeId][period] || {};
+  }
+
+  if(!DB.sales[storeId]) DB.sales[storeId] = {};
+  const target = DB.sales[storeId];
+
+  for(const f of pendingImport.folders){
+    if(!target[f.path]) target[f.path] = { sum:0, qty:0, isService:f.isService,
+      isReturn:f.isReturn, level:f.level };
+    if(mode==="accumulate"){
+      target[f.path].sum += f.sum;
+      target[f.path].qty += f.qty;
+    } else {
+      target[f.path].sum = f.sum;
+      target[f.path].qty = f.qty;
+    }
+    target[f.path].isService = f.isService;
+    target[f.path].isReturn = f.isReturn;
+    target[f.path].level = f.level;
+
+    // история
+    const h = DB.salesHistory[storeId][period];
+    h[f.path] = h[f.path] || { sum:0 };
+    if(mode==="accumulate") h[f.path].sum += f.sum;
+    else h[f.path].sum = f.sum;
+  }
+
+  DB.meta.lastImport[storeId] = { date:new Date().toISOString(), period, mode };
+  DB.meta.ui.storeId = storeId;
+  DB.meta.ui.period = period;
+  dbSave(); closeModal(); pendingImport = null; render();
 }
 
-/* ============================================================
-   PWA / SW
-   ============================================================ */
-if("serviceWorker" in navigator){
-  window.addEventListener("load", ()=>{
-    navigator.serviceWorker.register("sw.js").catch(()=>{});
+function undoLastImport(){
+  const store = currentStore(); if(!store) return;
+  const backup = DB.meta.lastImportBackup[store.id];
+  if(!backup) return alert("Нет данных для отмены");
+  if(!confirm("Отменить последний импорт? Ручные правки пола и план не затрагиваются.")) return;
+  DB.sales[store.id] = backup.sales;
+  DB.salesHistory[store.id] = backup.salesHistory;
+  delete DB.meta.lastImportBackup[store.id];
+  delete DB.meta.lastImport[store.id];
+  dbSave(); render();
+}
+
+/* шторка папки (G3) */
+function openFolderSheet(path){
+  const store = currentStore(); if(!store) return;
+  const f = DB.sales[store.id]?.[path];
+  if(!f) return;
+  const name = path.split("/").pop();
+  const d = distributeRevenue(store.id, path);
+  const gender = detectGender(name);
+  const genderLabelMap = { male:"Мужской", female:"Женский", kids:"Детский", unisex:"Унисекс", none:"Не определён" };
+
+  let placements = "";
+  if(d){
+    for(const r of d.rails){
+      const row = DB.rows.find(x=>x.id===r.rowId);
+      placements += `<div class="list-item small">
+        <b>Ряд ${escapeHtml(row?.code||"—")} · Сторона ${r.side} · Рейл ${escapeHtml(r.code)}</b>
+        <div class="tiny muted">${fmtM(r.length)} м · ${fmt(r.revenue)} ₽ · ${fmt(r.perMeter)} ₽/м</div>
+      </div>`;
+    }
+    for(const w of d.walls){
+      const row = DB.rows.find(x=>x.id===w.rowId);
+      placements += `<div class="list-item small">
+        <b>Стена ${escapeHtml(w.code)} (ряд ${escapeHtml(row?.code||"—")})</b>
+        <div class="tiny muted">${fmtM(w.length)} м × ${w.tiers} яр. · ${fmt(w.revenue)} ₽ · ${fmt(w.perMeterFloor)} ₽/м</div>
+      </div>`;
+    }
+  }
+  if(!placements) placements = `<div class="empty small">Не размещено</div>`;
+
+  openModal(`
+    <button class="close" onclick="closeModal()">×</button>
+    <h3>${escapeHtml(name)}</h3>
+    <div class="big emerald">${fmt(f.sum)} ₽</div>
+    <div class="grid2" style="margin-top:8px">
+      <div class="kit"><div class="tiny muted">штук</div><b>${fmt(f.qty||0)}</b></div>
+      <div class="kit"><div class="tiny muted">метраж</div><b>${d?fmtM(d.totalMeters):"—"}</b></div>
+      <div class="kit"><div class="tiny muted">₽/м</div><b>${d&&d.totalMeters?fmt(d.revenue/d.totalMeters):"—"}</b></div>
+    </div>
+    <div style="margin-top:12px">
+      <div class="tiny muted">Пол:</div>
+      <select class="input" onchange="setFolderGender('${escapeHtml(name)}',this.value)">
+        <option value="">— авто —</option>
+        ${Object.entries(genderLabelMap).map(([k,v])=>`
+          <option value="${k}" ${gender===k?"selected":""}>${v}</option>`).join("")}
+      </select>
+    </div>
+    <div style="margin-top:12px">
+      <div class="tiny muted">Размещение:</div>
+      ${placements}
+    </div>
+    <button class="btn ghost block sm" style="margin-top:10px"
+      onclick="openFolderBinding('${escapeHtml(path)}')">Изменить привязку</button>
+  `);
+}
+function setFolderGender(name, val){
+  if(val) DB.overrides.gender[name] = val;
+  else delete DB.overrides.gender[name];
+  dbSave(); closeModal(); render();
+}
+function openFolderBinding(path){
+  const store = currentStore(); if(!store) return;
+  const rails = DB.rails.filter(r=>r.storeId===store.id);
+  const walls = DB.walls.filter(w=>w.storeId===store.id);
+  const html = `
+    <button class="close" onclick="closeModal()">×</button>
+    <h3>Привязка папки</h3>
+    <div class="tiny muted" style="margin-bottom:8px">${escapeHtml(path)}</div>
+    <div style="max-height:300px;overflow:auto">
+      ${rails.map(r=>{
+        const row = DB.rows.find(x=>x.id===r.rowId);
+        return `<label class="list-item" style="display:flex;gap:8px;align-items:center">
+          <input type="checkbox" ${r.folder===path?"checked":""}
+            onchange="bindEntity('rail','${r.id}','${escapeHtml(path)}',this.checked)">
+          <span>Ряд ${escapeHtml(row?.code||"—")} · Сторона ${r.side} · Рейл ${escapeHtml(r.code)}</span>
+        </label>`;
+      }).join("")}
+      ${walls.map(w=>{
+        const row = DB.rows.find(x=>x.id===w.rowId);
+        return `<label class="list-item" style="display:flex;gap:8px;align-items:center">
+          <input type="checkbox" ${w.folder===path?"checked":""}
+            onchange="bindEntity('wall','${w.id}','${escapeHtml(path)}',this.checked)">
+          <span>Стена ${escapeHtml(w.code)} (ряд ${escapeHtml(row?.code||"—")})</span>
+        </label>`;
+      }).join("")}
+    </div>
+  `;
+  openModal(html);
+}
+function bindEntity(kind, id, path, checked){
+  const arr = kind==="rail" ? DB.rails : DB.walls;
+  const e = arr.find(x=>x.id===id); if(!e) return;
+  e.folder = checked ? path : null;
+  dbSave();
+}
+
+/* CRUD: ряды, рейлы, стены, полки */
+function openAddRow(){
+  const store = currentStore(); if(!store) return;
+  const code = prompt("Код ряда (А, А1, Б):"); if(!code) return;
+  const kit = prompt("Кит (Одежда / Обувь / Аксессуары / Распродажа):","Одежда");
+  if(!kit) return;
+  DB.rows.push({ id:uid(), storeId:store.id, kit:KIT_MAP[kit]||"clothing",
+    code, name:`Ряд ${code} (${kit})` });
+  dbSave(); render();
+}
+function openAddWall(){
+  const store = currentStore(); if(!store) return;
+  const code = prompt("Код стены:"); if(!code) return;
+  const length = +prompt("Длина, м:", "2") || 0;
+  const tiers = +prompt("Ярусов:", "1") || 1;
+  const rowId = DB.rows.find(r=>r.storeId===store.id)?.id || null;
+  DB.walls.push({ id:uid(), storeId:store.id, rowId, code, name:code, length, tiers, folder:null });
+  dbSave(); render();
+}
+function deleteEntity(kind, id){
+  if(!confirm("Удалить?")) return;
+  if(kind==="rail") DB.rails = DB.rails.filter(r=>r.id!==id);
+  else if(kind==="wall"){
+    DB.walls = DB.walls.filter(w=>w.id!==id);
+    DB.brackets = DB.brackets.filter(b=>b.wallId!==id);
+  }
+  dbSave(); render();
+}
+
+/* фиксация перестановки */
+function fixMove(){
+  const store = currentStore(); if(!store) return;
+  DB.moves.push({
+    id:uid(), storeId:store.id, date:new Date().toISOString(),
+    snapshot:{
+      rails: DB.rails.filter(r=>r.storeId===store.id)
+        .map(r=>({id:r.id, length:r.length, folder:r.folder})),
+      walls: DB.walls.filter(w=>w.storeId===store.id)
+        .map(w=>({id:w.id, length:w.length, tiers:w.tiers, folder:w.folder}))
+    }
   });
+  dbSave(); render();
 }
 
-/* ============================================================
-   START
-   ============================================================ */
-initPinUI();
-// авто-разблокировка в рамках сессии
-if(sessionStorage.getItem(SESSION_KEY) === "1"){
-  unlockApp();
+/* ---------- ЭКСПОРТ ---------- */
+function exportExcel(){
+  const store = currentStore(); if(!store) return;
+  const period = currentPeriod();
+  const wb = XLSX.utils.book_new();
+
+  const revenue = totalRevenue(store.id, period);
+  const plan = autoPlan(store.id, period);
+  const kits = kitsBreakdown(store.id);
+  const folders = foldersWithMetrics(store.id).sort((a,b)=>b.sum-a.sum);
+
+  const summary = [
+    ["Магазин", store.name], ["Период", period],
+    ["Выручка", revenue], ["План", plan.value], ["Выполнение, %", plan.value?pct(revenue,plan.value):"—"],
+    [], ["Киты"], ...Object.entries(kits).map(([k,v])=>[KIT_LABEL[k]||k, v]),
+    [], ["Топ-5 папок"],
+    ...folders.slice(0,5).map((f,i)=>[`${i+1}. ${f.name}`, f.sum])
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "Сводка");
+
+  const foldersSheet = [["Уровень","Папка","Выручка","Штуки","Метры","₽/м","Статус"]]
+    .concat(folders.map(f=>[f.level, f.name, f.sum, f.qty, f.totalMeters,
+      f.totalMeters?Math.round(f.perMeter):0,
+      f.isService?"служебная":f.isReturn?"возврат":f.unplaced?"не размещено":"ok"]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(foldersSheet), "Папки");
+
+  const railsRows = [["Ряд","Сторона","Код","Длина","Папка","Выручка","₽/м"]];
+  for(const r of DB.rails.filter(x=>x.storeId===store.id)){
+    const d = distributeRevenue(store.id, r.folder);
+    const rr = d?.rails.find(x=>x.id===r.id);
+    const row = DB.rows.find(x=>x.id===r.rowId);
+    railsRows.push([row?.code||"—", r.side, r.code, r.length,
+      r.folder?.split("/").pop()||"—", rr?.revenue||0, rr?.perMeter||0]);
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(railsRows), "Рейлы");
+
+  XLSX.writeFile(wb, `Метраж_${store.name}_${period}.xlsx`);
+}
+function exportPdf(){
+  alert("PDF-экспорт: подключите pdfmake (см. ТЗ §7.2). Заглушка.");
+}
+function exportJson(){
+  const blob = new Blob([JSON.stringify(DB,null,2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `metrag_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+function importJson(ev){
+  const f = ev.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = e=>{
+    try{
+      const data = JSON.parse(e.target.result);
+      if(!confirm("Заменить все данные из файла?")) return;
+      DB = data; dbSave(); render();
+    }catch(err){ alert("Ошибка: "+err.message); }
+  };
+  r.readAsText(f);
+  ev.target.value = "";
+}
+function buyerReport(){
+  alert("Отчёт закупщику: заглушка. Требует pdfmake (ТЗ §7.3).");
+}
+
+/* PIN */
+function changePin(){
+  const p = prompt("Новый PIN (4–8 цифр):");
+  if(p && /^\d{4,8}$/.test(p)){ DB.meta.pin = p; dbSave(); alert("PIN установлен"); }
+}
+function resetAll(){
+  if(!confirm("Сбросить ВСЕ данные? Необратимо.")) return;
+  if(!confirm("Точно? Восстановления нет.")) return;
+  localStorage.removeItem(DB_KEY); location.reload();
+}
+function clearAll(){ resetAll(); }
+
+/* ---------- 11. РОУТЕР ---------- */
+let currentTab = "home";
+const TABS = [
+  { id:"home",     label:"Главная",        icon:"M3 10l9-7 9 7v11H3z" },
+  { id:"analytics",label:"Аналитика",      icon:"M4 20V10M10 20V4M16 20v-6M22 20V8" },
+  { id:"rails",    label:"Рейлы и Стены",  icon:"M4 6h16M4 12h16M4 18h10" },
+  { id:"settings", label:"Настройки",      icon:"M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a7.9 7.9 0 000-6l2-1-2-3.5-2 1a8 8 0 00-5.2-3L12 0 10 1.5a8 8 0 00-5.2 3l-2-1L1 7l2 1a7.9 7.9 0 000 6l-2 1 2 3.5 2-1a8 8 0 005.2 3L10 24l2-1.5a8 8 0 005.2-3l2 1 2-3.5z" }
+];
+
+function renderNav(){
+  document.getElementById("nav").innerHTML = TABS.map(t=>`
+    <button class="${currentTab===t.id?'active':''}" onclick="switchTab('${t.id}')">
+      <svg viewBox="0 0 24 24"><path d="${t.icon}" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      ${t.label}
+    </button>`).join("");
+}
+function switchTab(id){
+  currentTab = id;
+  if(id==="home"||id==="analytics"||id==="rails") DB.meta.ui.storeId = currentStore()?.id;
+  dbSave();
+  render();
+}
+function goToTab2(dep){
+  currentTab = "analytics";
+  render();
+}
+
+function renderHeader(){
+  const store = currentStore();
+  const period = currentPeriod();
+  const lastImp = store && DB.meta.lastImport[store.id];
+  const title = store ? store.name : "Метраж";
+  const sub = lastImp
+    ? `Данные: ${periodLabel(period)} · импорт ${lastImp.date.slice(0,10)}`
+    : `Период: ${periodLabel(period)} · нет импорта`;
+  document.getElementById("top").innerHTML = `
+    <h1><span class="store-btn" onclick="openStoresSheet()">${escapeHtml(title)}</span></h1>
+    <div class="sub">${sub}</div>
+  `;
+}
+
+function render(){
+  renderHeader();
+  renderNav();
+  if(currentTab==="home") renderHome();
+  else if(currentTab==="analytics") renderAnalytics();
+  else if(currentTab==="rails") renderRailsWalls();
+  else if(currentTab==="settings") renderSettings();
+}
+
+/* старт */
+dbLoad();
+if(!DB.stores.length){
+  DB.stores.push({ id:uid(), name:"Мода", createdAt:new Date().toISOString(),
+    plan:{value:0, source:"auto"} });
+  DB.meta.ui.storeId = DB.stores[0].id;
+  dbSave();
+}
+if(!DB.meta.ui.storeId) DB.meta.ui.storeId = DB.stores[0]?.id;
+render();
+
+/* SW */
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
 }
 </script>
 </body>
