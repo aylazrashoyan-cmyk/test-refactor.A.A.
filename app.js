@@ -112,8 +112,7 @@ const Parser = {
 
       if (stack.length > 0) {
         stack[stack.length-1].children.push(node);
-        // Сумма родителя = сумма его прямых товаров + сумма дочерних папок
-        stack[stack.length-1].sum += node.sum;
+        stack[stack.length-1].sum += node.sum; // Сумма родителя для сходимости
       } else roots.push(node);
       if (!node.isItem) stack.push(node);
     });
@@ -127,8 +126,9 @@ const Parser = {
     sumLeaves(roots);
 
     const valid = Math.abs(trueSum - controlSum) / (controlSum || 1) < 0.01;
+    const errorMsg = valid ? '' : `Сумма листьев (${Math.round(trueSum)}) не сходится с Итого (${controlSum})`;
 
-    return { roots, daysInPeriod, daysInMonth, totalSum: controlSum, valid, date: new Date().toISOString() };
+    return { roots, daysInPeriod, daysInMonth, totalSum: controlSum, valid, errorMsg, date: new Date().toISOString() };
   },
 
   cat(path) {
@@ -158,21 +158,21 @@ const App = {
   ],
 
   init() {
+    this.renderNav();
+    this.route(this.screen);
+  },
+
+  renderNav() {
     document.getElementById('nav').innerHTML = this.nav.map(n => `
-      <a href="#" class="nav-item ${this.screen === n.id ? 'active' : ''}" onclick="App.route('${n.id}')">
+      <a href="#" class="nav-item ${this.screen === n.id ? 'active' : ''}" onclick="App.route('${n.id}'); return false;">
         ${n.icon}<span>${n.label}</span>
       </a>
     `).join('');
-    this.route(this.screen);
   },
 
   route(screen) {
     this.screen = screen;
-    document.getElementById('nav').innerHTML = this.nav.map(n => `
-      <a href="#" class="nav-item ${this.screen === n.id ? 'active' : ''}" onclick="App.route('${n.id}')">
-        ${n.icon}<span>${n.label}</span>
-      </a>
-    `).join('');
+    this.renderNav();
     const root = document.getElementById('screen');
     root.innerHTML = '';
     
@@ -227,7 +227,7 @@ const Screens = {
           <h1 class="h1">Мода ▾</h1>
           <div class="subtitle">Данные за ${current.daysInPeriod} дн.</div>
         </div>
-        <div class="tag ${current.valid ? 'ok' : 'err'}" onclick="alert('${current.valid ? 'Суммы сходятся!' : 'Расхождение в суммах!'}')">
+        <div class="tag ${current.valid ? 'ok' : 'err'}" id="err-tag">
           ${current.valid ? 'Всё ок' : 'Ошибка'}
         </div>
       </div>
@@ -246,7 +246,7 @@ const Screens = {
       </div>
 
       <div class="card">
-        <div class="card-title">Киты</div>
+        <div class="card-title">Категории</div>
         <div class="stats-grid">
           ${Object.entries(cats).map(([k,v]) => `
             <div class="stat-box">
@@ -280,6 +280,17 @@ const Screens = {
     `).join('');
     
     document.getElementById('top-list').innerHTML = window.renderTop('М');
+
+    // Клик по ошибке
+    if (!current.valid) {
+      document.getElementById('err-tag').onclick = () => {
+        UI.modal(`
+          <h2 style="font-size:24px;font-weight:800;margin-bottom:12px;color:var(--danger)">Ошибка сходимости</h2>
+          <p style="color:var(--text-muted);font-size:16px;margin-bottom:24px;">${current.errorMsg}</p>
+          <button class="btn btn-primary" onclick="UI.closeModal()">Понятно</button>
+        `);
+      };
+    }
   },
 
   // --- АНАЛИТИКА ---
@@ -413,6 +424,10 @@ const Screens = {
 // ==========================================
 // 5. INIT
 // ==========================================
+// Привязываем к window, чтобы onclick работали
+window.App = App; 
+window.UI = UI;
+
 DB.init().then(() => {
   App.init();
   if ('serviceWorker' in navigator) {
