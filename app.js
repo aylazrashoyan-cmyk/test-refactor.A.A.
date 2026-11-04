@@ -1,4 +1,38 @@
 // ==========================================
+// 0. CONFIG — единственный источник констант
+// ==========================================
+const CONFIG = Object.freeze({
+  PARSER: {
+    INDENT_STEP: 2,          // 1 уровень = 2 пробела в выгрузке 1С
+    DEFAULT_PERIOD_DAYS: 30, // если дата в имени файла не распознана
+    SUM_COLUMN: 4,           // индекс колонки «Сумма» (E)
+    QTY_COLUMN: 3,           // индекс колонки «Кол-во» (D)
+    CONTROL_ROW: 'Мода',     // строка-эталон итоговой суммы
+    SKIP_ROWS: Object.freeze(['Продажи', 'Магазин', 'Склад', 'Номенклатура', 'Торговый зал', 'Итого']),
+    ITEM_NAME_REGEX: /\d+\s*[рp₽]|\(\-?\d+%\)/i,
+  },
+  CATEGORY_RULES: Object.freeze([
+    { name: 'Распродажа',  needles: ['распродаж', 'будут удалены'] }, // ПРИОРИТЕТ №1
+    { name: 'Обувь',       needles: ['обувь'] },
+    { name: 'Аксессуары',  needles: ['аксессуар'] },
+  ]),
+  DEFAULT_CATEGORY: 'Одежда',
+  GENDER_RULES: Object.freeze([
+    { code: 'Д', needles: ['детск', 'девочк', 'мальчик'] }, // ПРИОРИТЕТ №1
+    { code: 'Ж', needles: ['женск'] },
+    { code: 'М', needles: ['мужск'] },
+  ]),
+  TOP: {
+    LIMIT: 5,
+    CATEGORIES: Object.freeze(['М', 'Ж', 'Д', 'Обувь', 'Аксессуары']),
+    EXCLUDE_FROM_GENDER_TABS: Object.freeze(['Обувь']),
+  },
+  ABC: { A_THRESHOLD: 0.80, B_THRESHOLD: 0.95 },
+  PLAN: { MIN_DAYS_FOR_FORECAST: 10 },
+  STORAGE: { MAX_IMPORTS: 12 },
+});
+
+// ==========================================
 // 1. UI
 // ==========================================
 const Icons = {
@@ -29,7 +63,7 @@ const UI = {
 // 2. DB (IndexedDB)
 // ==========================================
 const DB = {
-  dbName: 'analitik_v6', storeName: 'data', data: null,
+  dbName: 'analitik_v7', storeName: 'data', data: null,
   async init() {
     return new Promise((resolve) => {
       const req = indexedDB.open(this.dbName, 1);
@@ -41,24 +75,28 @@ const DB = {
           this.data = getReq.result || { imports: [], rails: [], links: [], plans: {} };
           resolve();
         };
+        getReq.onerror = () => { this.data = { imports: [], rails: [], links: [], plans: {} }; resolve(); };
       };
-      req.onerror = () => resolve();
+      req.onerror = () => { this.data = { imports: [], rails: [], links: [], plans: {} }; resolve(); };
     });
   },
   async save() {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.dbName, 1);
+      req.onerror = () => reject(req.error);
       req.onsuccess = (e) => {
         const tx = e.target.result.transaction(this.storeName, 'readwrite');
         tx.objectStore(this.storeName).put(this.data, 'state');
         tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
       };
     });
   }
 };
 
 // ==========================================
-// 3. Parser (v6.0)
+// 3. Parser (v7.1)
 // ==========================================
 const Parser = {
   parse(file) {
@@ -67,81 +105,137 @@ const Parser = {
       reader.onload = (e) => {
         try {
           const wb = XLSX.read(e.target.result, { type: 'array' });
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null, raw: true });
+          const rows = XLSX.utils.sheet_to_json(
+            wb.Sheets[wb.SheetNames[0]],
+            { header: 1, defval: null, raw: true }
+          );
           resolve(this.build(rows, file.name));
         } catch (err) { reject(err); }
       };
+      reader.onerror = () => reject(new Error('FileReader error'));
       reader.readAsArrayBuffer(file);
     });
   },
 
   build(rows, filename) {
-    let controlSum = 0, step = 2;
-    let dateMatch = filename.match(/(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})\s*[-–—]\s*(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/);
+    const { INDENT_STEP, SUM_COLUMN, QTY_COLUMN, CONTROL_ROW, SKIP_ROWS } = CONFIG.PARSER;
 
-    let daysInPeriod = 30, daysInMonth = 30;
-    if (dateMatch) {
-      const s = new Date(dateMatch[3].length === 2 ? '20' + dateMatch[3] : dateMatch[3], dateMatch[2] - 1, dateMatch[1]);
-      const e = new Date(dateMatch[6].length === 2 ? '20' + dateMatch[6] : dateMatch[6], dateMatch[5] - 1, dateMatch[4]);
-      daysInPeriod = Math.round((e - s) / 86400000) + 1;
-      daysInMonth = new Date(s.getFullYear(), s.getMonth() + 1, 0).getDate();
-    }
+    let controlSum = 0;
+    const period = this.parsePeriod(filename);
 
-    const toNum = (v) => (typeof v === 'number' ? v : parseFloat(String(v || '').replace(/[\s\u00A0]/g, '').replace(',', '.')) || 0);
-    const isItem = (name) => /\d+\s*[рp₽]|\(\-?\d+%\)/i.test(name);
+    const toNum = (v) => {
+      if (typeof v === 'number') return v;
+      const cleaned = String(v ?? '').replace(/[\s\u00A0]/g, '').replace(',', '.');
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? n : 0;
+    };
 
-    const roots = []; let stack = [];
+    const roots = [];
+    const stack = [];
 
-    rows.forEach(row => {
-      const raw = row[0]; if (!raw) return;
+    for (const row of rows) {
+      const raw = row?.[0];
+      if (raw == null || raw === '') continue;
+
       const name = String(raw).trim();
-      if (['Продажи', 'Магазин', 'Склад', 'Номенклатура', 'Торговый зал', 'Итого'].includes(name)) return;
-      if (name === 'Мода') { controlSum = toNum(row[4]); return; }
+      if (!name || SKIP_ROWS.includes(name)) continue;
+      if (name === CONTROL_ROW) { controlSum = toNum(row[SUM_COLUMN]); continue; }
 
-      const indent = String(raw).match(/^[\s\u00A0]+/)?.[0].length || 0;
-      const level = Math.round(indent / step);
+      const indent = (String(raw).match(/^[\s\u00A0]+/)?.[0].length) || 0;
+      const level = Math.round(indent / INDENT_STEP);
 
-      while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
+      while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
+
+      const parent = stack.length ? stack[stack.length - 1] : null;
+      const path = parent ? `${parent.path} > ${name}` : name;
 
       const node = {
-        name, level, sum: toNum(row[4]), qty: toNum(row[3]), isItem: isItem(name),
-        children: [], path: stack.length ? `${stack[stack.length - 1].path} > ${name}` : name,
-        category: this.cat(stack.length ? stack[stack.length - 1].path : name),
-        gender: this.gen(stack.length ? stack[stack.length - 1].path : name)
+        name,
+        level,
+        sum: toNum(row[SUM_COLUMN]),
+        qty: toNum(row[QTY_COLUMN]),
+        path,
+        category: this.category(path),
+        gender: this.gender(path),
+        children: [],
+        isItem: false, // определим после обхода
       };
 
-      if (stack.length > 0) stack[stack.length - 1].children.push(node);
+      if (parent) parent.children.push(node);
       else roots.push(node);
-      
-      if (!node.isItem) stack.push(node);
-    });
 
-    // Валидация строго по листьям (isItem)
+      stack.push(node);
+    }
+
+    // --- isItem = лист
+    const markItems = (nodes) => nodes.forEach(n => {
+      if (n.children.length === 0) {
+        n.isItem = true;
+      } else {
+        markItems(n.children);
+      }
+    });
+    markItems(roots);
+
+    // --- Сходимость
     let leavesSum = 0;
     const collectLeaves = (nodes) => nodes.forEach(n => {
       if (n.isItem) leavesSum += n.sum;
-      else if (n.children.length) collectLeaves(n.children);
+      else collectLeaves(n.children);
     });
     collectLeaves(roots);
 
-    const valid = Math.abs(leavesSum - controlSum) / (controlSum || 1) < 0.01;
-    const errorMsg = valid ? '' : { leaves: Math.round(leavesSum), control: Math.round(controlSum) };
+    const valid = controlSum === 0
+      ? Math.abs(leavesSum) < 1
+      : Math.abs(leavesSum - controlSum) / Math.abs(controlSum) < 0.01;
 
-    return { roots, daysInPeriod, daysInMonth, totalSum: controlSum, valid, errorMsg, date: new Date().toISOString(), filename };
+    return {
+      roots,
+      daysInPeriod: period.daysInPeriod,
+      daysInMonth: period.daysInMonth,
+      periodKnown: period.known,
+      totalSum: controlSum,
+      valid,
+      errorMsg: valid ? null : { leaves: Math.round(leavesSum), control: Math.round(controlSum) },
+      date: new Date().toISOString(),
+      filename,
+    };
   },
 
-  cat(path) {
-    if (path.includes('Обувь')) return 'Обувь';
-    if (path.includes('Аксессуар')) return 'Аксессуары';
-    if (path.includes('Распродаж') || path.includes('Будут удалены')) return 'Распродажа';
-    return 'Одежда';
+  parsePeriod(filename) {
+    const m = filename.match(
+      /(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})\s*[-–—]\s*(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/
+    );
+    if (!m) {
+      return { daysInPeriod: CONFIG.PARSER.DEFAULT_PERIOD_DAYS, daysInMonth: 30, known: false };
+    }
+    const y = (s) => (s.length === 2 ? 2000 + Number(s) : Number(s));
+    const start = new Date(y(m[3]), Number(m[2]) - 1, Number(m[1]));
+    const end   = new Date(y(m[6]), Number(m[5]) - 1, Number(m[4]));
+    const daysInPeriod = Math.round((end - start) / 86400000) + 1;
+    const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    return { daysInPeriod, daysInMonth, known: true };
   },
-  gen(path) {
-    if (path.includes('Женск') || path.includes('Девочк')) return 'Ж';
-    if (path.includes('Мужск') || path.includes('Мальчик')) return 'М';
-    if (path.includes('Детск')) return 'Д';
+
+  normalize(s) {
+    return String(s || '').toLowerCase().replace(/ё/g, 'е');
+  },
+
+  category(path) {
+    const p = this.normalize(path);
+    for (const rule of CONFIG.CATEGORY_RULES) {
+      if (rule.needles.some(n => p.includes(n))) return rule.name;
+    }
+    return CONFIG.DEFAULT_CATEGORY;
+  },
+
+  gender(path) {
+    const p = this.normalize(path);
+    for (const rule of CONFIG.GENDER_RULES) {
+      if (rule.needles.some(n => p.includes(n))) return rule.code;
+    }
     return null;
-  }
+  },
 };
 
 // ==========================================
@@ -199,76 +293,39 @@ const Screens = {
     const planKey = current.date.slice(0, 7);
     const plan = DB.data.plans[planKey] || current.totalSum;
     const planPct = plan > 0 ? Math.min(100, (current.totalSum / plan) * 100) : 0;
-    const showForecast = current.daysInPeriod >= 10;
-    const forecast = showForecast ? Math.round((current.totalSum / current.daysInPeriod) * current.daysInMonth) : null;
+    
+    // Блок 5: прогноз через конфиг и periodKnown
+    const showForecast = current.periodKnown && current.daysInPeriod >= CONFIG.PLAN.MIN_DAYS_FOR_FORECAST;
+    const forecast = showForecast
+      ? Math.round((current.totalSum / current.daysInPeriod) * current.daysInMonth)
+      : null;
 
-    // === ИСПРАВЛЕННЫЕ КАТЕГОРИИ (только по листьям, без дублей) ===
+    // 1. КАТЕГОРИИ (только листья)
     const cats = { 'Одежда': 0, 'Обувь': 0, 'Аксессуары': 0, 'Распродажа': 0 };
     const calcCats = (nodes) => nodes.forEach(n => {
-      if (n.isItem) {
-        cats[n.category] += n.sum;
-      } else {
-        calcCats(n.children);
-      }
+      if (n.isItem) cats[n.category] += n.sum;
+      else calcCats(n.children);
     });
     calcCats(current.roots);
 
-    // === УМНЫЙ ПОИСК ТОП-5 ===
-    let tops = { 'М': [], 'Ж': [], 'Д': [], 'Аксессуары': [], 'Обувь': [] };
-    
-    // Собираем все папки-листья (где лежат товары), сохраняя их родительский путь
-    const allLeafFolders = [];
+    // 2. ТОП-5 — все листовые папки, приоритет по категории и полу
+    const tops = Object.fromEntries(CONFIG.TOP.CATEGORIES.map(k => [k, []]));
+
     const findLeafFolders = (nodes) => nodes.forEach(n => {
       if (n.isItem) return;
       const isLeaf = n.children.length === 0 || n.children.every(c => c.isItem);
-      if (isLeaf) {
-        allLeafFolders.push(n);
-      } else {
-        findLeafFolders(n.children);
-      }
+      if (isLeaf) this._classifyTopFolder(n, tops);
+      else findLeafFolders.call(this, n.children);
     });
-    findLeafFolders(current.roots);
+    findLeafFolders.call(this, current.roots);
 
-    // Распределяем по группам
-    allLeafFolders.forEach(folder => {
-      const path = folder.path.toLowerCase();
-      
-      // Аксессуары: ищем родителя "Аксессуары" (только 1 уровень вложенности)
-      if (folder.category === 'Аксессуары') {
-        // Если путь типа "Мода > Аксессуары > Носки" (2 дефиса = 2 уровень)
-        // Или "Аксессуары > Носки"
-        const parts = folder.path.split(' > ');
-        if (parts.length <= 3 && folder.name !== 'Аксессуары') {
-          tops['Аксессуары'].push(folder);
-        }
-      }
-      // Обувь: по гендеру
-      else if (folder.category === 'Обувь') {
-        if (path.includes('женск')) tops['Ж'].push(folder); // Женская обувь идет в Ж
-        else if (path.includes('мужск')) tops['М'].push(folder); // Мужская обувь идет в М
-        else if (path.includes('детск') || path.includes('девочк') || path.includes('мальчик')) tops['Д'].push(folder);
-        else tops['Обувь'].push(folder);
-      }
-      // Одежда
-      else {
-        if (path.includes('женск') || path.includes('девочк')) tops['Ж'].push(folder);
-        else if (path.includes('мужск') || path.includes('мальчик')) tops['М'].push(folder);
-        else if (path.includes('детск')) tops['Д'].push(folder);
-      }
-    });
-
-    // Сортировка и очистка
-    Object.keys(tops).forEach(k => {
-      const unique = [];
+    // Очистка от дублей по path и сортировка
+    for (const key of CONFIG.TOP.CATEGORIES) {
       const seen = new Set();
-      tops[k].forEach(item => {
-        if (item.sum !== 0 && !seen.has(item.name)) {
-          seen.add(item.name);
-          unique.push(item);
-        }
-      });
-      tops[k] = unique.sort((a, b) => b.sum - a.sum);
-    });
+      tops[key] = tops[key]
+        .filter(f => f.sum !== 0 && !seen.has(f.path) && seen.add(f.path))
+        .sort((a, b) => b.sum - a.sum);
+    }
 
     root.innerHTML = `
       <div class="header">
@@ -289,11 +346,12 @@ const Screens = {
           <span>${Math.round(planPct)}%</span>
         </div>
         <div class="progress-wrap"><div class="progress-bar" style="width:${planPct}%"></div></div>
-        ${forecast !== null ? `
-        <div class="forecast-text">Прогноз на месяц: <span style="color:var(--accent);font-weight:700">${forecast.toLocaleString('ru-RU')} ₽</span></div>
-        ` : `
-        <div class="forecast-text">Прогноз недоступен (мало данных: ${current.daysInPeriod} дн.)</div>
-        `}
+        ${forecast !== null
+          ? `<div class="forecast-text">Прогноз на месяц: <span style="color:var(--accent);font-weight:700">${forecast.toLocaleString('ru-RU')} ₽</span></div>`
+          : `<div class="forecast-text">${current.periodKnown
+              ? `Прогноз недоступен (мало данных: ${current.daysInPeriod} дн.)`
+              : `Прогноз недоступен (период не определён по имени файла)`}</div>`
+        }
       </div>
 
       <div class="card">
@@ -310,7 +368,7 @@ const Screens = {
 
       <div class="card" style="padding-bottom:12px">
         <div class="card-title">Топ-5 папок</div>
-        <div class="tabs-scroll" id="tabs-container">
+        <div class="tabs-scroll">
           <div class="tab active" data-g="М" onclick="window.switchTop('М', this)">Мужская одежда</div>
           <div class="tab" data-g="Ж" onclick="window.switchTop('Ж', this)">Женская одежда</div>
           <div class="tab" data-g="Д" onclick="window.switchTop('Д', this)">Детская</div>
@@ -324,16 +382,11 @@ const Screens = {
     window.renderTop = (gender) => {
       let list = tops[gender] || [];
       if (gender === 'М' || gender === 'Ж') {
-        list = list.filter(i => i.category !== 'Обувь');
-      }
-      if (gender === 'Обувь') {
-        list = tops['М'].concat(tops['Ж'], tops['Д'], tops['Обувь'])
-                   .filter(i => i.category === 'Обувь')
-                   .sort((a, b) => b.sum - a.sum);
+        list = list.filter(i => !CONFIG.TOP.EXCLUDE_FROM_GENDER_TABS.includes(i.category));
       }
       if (!list.length) return `<div class="item-desc" style="padding:16px 0">Нет данных</div>`;
-      
-      return list.slice(0, 5).map((item, i) => `
+
+      return list.slice(0, CONFIG.TOP.LIMIT).map((item, i) => `
         <div class="list-item">
           <div>
             <div class="item-name">${i + 1}. ${item.name}</div>
@@ -359,11 +412,31 @@ const Screens = {
           <h2 style="font-size:24px;font-weight:800;margin-bottom:12px;color:var(--danger)">Ошибка в файле</h2>
           <p style="color:var(--text-muted);font-size:16px;margin-bottom:24px;">
             Итог по товарам (${em.leaves.toLocaleString('ru-RU')} ₽) не совпадает с итогом магазина (${em.control.toLocaleString('ru-RU')} ₽).
-            Проверьте выгрузку из 1С.
           </p>
           <button class="btn btn-primary" onclick="UI.closeModal()">Понятно</button>
         `);
       };
+    }
+  },
+
+  // Раскладывает листовую папку по вкладкам топа.
+  _classifyTopFolder(folder, tops) {
+    const cat = folder.category;
+
+    if (cat === 'Аксессуары') {
+      if (folder.name.toLowerCase() !== 'аксессуары') tops['Аксессуары'].push(folder);
+      return;
+    }
+
+    if (cat === 'Обувь') {
+      tops['Обувь'].push(folder);
+      if (folder.gender) tops[folder.gender].push(folder);
+      return;
+    }
+
+    if (cat === 'Одежда') {
+      if (folder.gender) tops[folder.gender].push(folder);
+      return;
     }
   },
 
@@ -383,12 +456,15 @@ const Screens = {
     const zeroOrNeg = folders.filter(f => f.sum <= 0);
 
     const total = positive.reduce((acc, f) => acc + f.sum, 0);
+    
+    // Блок 4: ABC через конфиг
+    const { A_THRESHOLD, B_THRESHOLD } = CONFIG.ABC;
     let cum = 0;
     const a = [], b = [], c = [];
     positive.forEach(f => {
       cum += f.sum;
-      if (cum <= total * 0.8) a.push(f);
-      else if (cum <= total * 0.95) b.push(f);
+      if (cum <= total * A_THRESHOLD) a.push(f);
+      else if (cum <= total * B_THRESHOLD) b.push(f);
       else c.push(f);
     });
 
@@ -532,6 +608,8 @@ const Screens = {
       try {
         const data = await Parser.parse(file);
         DB.data.imports.unshift(data);
+        // Блок 6: лимит импортов
+        DB.data.imports = DB.data.imports.slice(0, CONFIG.STORAGE.MAX_IMPORTS);
         await DB.save();
         UI.toast(data.valid ? 'Успешно загружено' : 'Внимание: расхождение в суммах', data.valid ? 'default' : 'error');
         App.route('home');
