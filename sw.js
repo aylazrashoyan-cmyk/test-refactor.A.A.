@@ -1,14 +1,10 @@
-const CACHE = 'analitik-v6';
+const CACHE = 'analytics-flow-v6';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
-  './manifest.json',
-  './icons/192.png',
-  './icons/512.png',
-  './icons/192-maskable.png',
-  './icons/512-maskable.png'
+  './manifest.json'
 ];
 
 self.addEventListener('install', (e) => {
@@ -27,8 +23,6 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  if (!e.request.url.startsWith(self.location.origin)) return; // не кешируем чужое
-
   e.respondWith(
     caches.match(e.request).then(cached => {
       return fetch(e.request).then(res => {
@@ -36,10 +30,7 @@ self.addEventListener('fetch', (e) => {
           caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         }
         return res;
-      }).catch(() => {
-        // fallback: либо кеш, либо index.html (для навигации), либо 503
-        return cached || caches.match('./index.html') || new Response('Offline', { status: 503 });
-      });
+      }).catch(() => cached);
     })
   );
 });
