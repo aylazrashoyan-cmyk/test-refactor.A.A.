@@ -1,24 +1,25 @@
 // ==========================================
+// // ==========================================
 // 0. CONFIG — единственный источник констант
 // ==========================================
 const CONFIG = Object.freeze({
   PARSER: {
-    INDENT_STEP: 2,          // 1 уровень = 2 пробела в выгрузке 1С
-    DEFAULT_PERIOD_DAYS: 30, // если дата в имени файла не распознана
-    SUM_COLUMN: 4,           // индекс колонки «Сумма» (E)
-    QTY_COLUMN: 3,           // индекс колонки «Кол-во» (D)
-    CONTROL_ROW: 'Мода',     // строка-эталон итоговой суммы
+    INDENT_STEP: 2,
+    DEFAULT_PERIOD_DAYS: 30,
+    SUM_COLUMN: 4,
+    QTY_COLUMN: 3,
+    CONTROL_ROW: 'Мода',
     SKIP_ROWS: Object.freeze(['Продажи', 'Магазин', 'Склад', 'Номенклатура', 'Торговый зал', 'Итого']),
     ITEM_NAME_REGEX: /\d+\s*[рp₽]|\(\-?\d+%\)/i,
   },
   CATEGORY_RULES: Object.freeze([
-    { name: 'Распродажа',  needles: ['распродаж', 'будут удалены'] }, // ПРИОРИТЕТ №1
+    { name: 'Распродажа',  needles: ['распродаж', 'будут удалены'] },
     { name: 'Обувь',       needles: ['обувь'] },
     { name: 'Аксессуары',  needles: ['аксессуар'] },
   ]),
   DEFAULT_CATEGORY: 'Одежда',
   GENDER_RULES: Object.freeze([
-    { code: 'Д', needles: ['детск', 'девочк', 'мальчик'] }, // ПРИОРИТЕТ №1
+    { code: 'Д', needles: ['детск', 'девочк', 'мальчик'] },
     { code: 'Ж', needles: ['женск'] },
     { code: 'М', needles: ['мужск'] },
   ]),
@@ -28,7 +29,25 @@ const CONFIG = Object.freeze({
     EXCLUDE_FROM_GENDER_TABS: Object.freeze(['Обувь']),
   },
   ABC: { A_THRESHOLD: 0.80, B_THRESHOLD: 0.95 },
-  PLAN: { MIN_DAYS_FOR_FORECAST: 10 },
+  PLAN: {
+    MIN_DAYS_FOR_FORECAST: 10,
+    FORECAST_SPREAD: 0.15, // ±15% для линейной экстраполяции
+  },
+  RAILS: {
+    CSV_DELIMITER: ';',
+    MIN_EFFICIENCY: 15000, // ₽/м — порог «недогружен»
+  },
+  ALERTS: {
+    PLAN_WARN_PCT: 80,        // ниже 80% плана при >=20 днях
+    PLAN_WARN_MIN_DAYS: 20,
+    ABC_DROP_GROUP: 'C',      // папка ушла в C
+  },
+  PERIOD: {
+    COMPARABLE_TOLERANCE: 0.10, // ±10% длины периода
+  },
+  ONBOARDING: {
+    FOLLOWUP_DAYS: 14,
+  },
   STORAGE: { MAX_IMPORTS: 12 },
 });
 
@@ -56,14 +75,19 @@ const UI = {
     root.innerHTML = `<div class="modal-content">${html}</div>`;
     root.classList.add('open');
   },
-  closeModal: () => document.getElementById('modal-root').classList.remove('open')
+  closeModal: () => document.getElementById('modal-root').classList.remove('open'),
+  setBadge: (n) => {
+    if ('setAppBadge' in navigator) {
+      try { n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch (e) {}
+    }
+  }
 };
 
 // ==========================================
 // 2. DB (IndexedDB)
 // ==========================================
 const DB = {
-  dbName: 'analitik_v7', storeName: 'data', data: null,
+  dbName: 'analytics_flow_v1', storeName: 'data', data: null,
   async init() {
     return new Promise((resolve) => {
       const req = indexedDB.open(this.dbName, 1);
@@ -72,13 +96,25 @@ const DB = {
         const tx = e.target.result.transaction(this.storeName, 'readonly');
         const getReq = tx.objectStore(this.storeName).get('state');
         getReq.onsuccess = () => {
-          this.data = getReq.result || { imports: [], rails: [], links: [], plans: {} };
+          this.data = getReq.result || this._empty();
+          // миграция: если старый формат без profile — добавим
+          if (!this.data.profile) this.data.profile = null;
+          if (!this.data.rails) this.data.rails = [];
           resolve();
         };
-        getReq.onerror = () => { this.data = { imports: [], rails: [], links: [], plans: {} }; resolve(); };
+        getReq.onerror = () => { this.data = this._empty(); resolve(); };
       };
-      req.onerror = () => { this.data = { imports: [], rails: [], links: [], plans: {} }; resolve(); };
+      req.onerror = () => { this.data = this._empty(); resolve(); };
     });
+  },
+  _empty() {
+    return {
+      imports: [],
+      rails: [],
+      plans: {},
+      profile: null,
+      checklist: { plan: false, import: false, top5: false, alert: false },
+    };
   },
   async save() {
     return new Promise((resolve, reject) => {
@@ -92,11 +128,45 @@ const DB = {
         tx.onabort = () => reject(tx.error);
       };
     });
+  },
+
+  // --- Выбор «правильного» импорта для главной
+  getCurrentView() {
+    const imports = this.data.imports;
+    if (!imports.length) return null;
+
+    const sorted = [...imports].sort((a, b) =>
+      (b.periodEnd || b.date).localeCompare(a.periodEnd || a.date)
+    );
+
+    // приоритет: month > week > day > multi_month > unknown
+    const rank = { month: 4, week: 3, day: 2, multi_month: 1, unknown: 0 };
+    const samePeriod = sorted.filter(i =>
+      i.periodStart && sorted[0].periodStart &&
+      i.periodStart.slice(0, 7) === sorted[0].periodStart.slice(0, 7)
+    );
+    const hero = (samePeriod.length ? samePeriod : sorted)
+      .sort((a, b) => (rank[b.granularity] || 0) - (rank[a.granularity] || 0))[0];
+
+    return { hero, all: sorted };
+  },
+
+  findComparable(current) {
+    if (!current || !current.periodStart) return null;
+    const tol = CONFIG.PERIOD.COMPARABLE_TOLERANCE;
+    return this.data.imports.find(imp =>
+      imp !== current &&
+      imp.granularity === current.granularity &&
+      imp.periodDays &&
+      Math.abs(imp.periodDays - current.periodDays) / current.periodDays < tol &&
+      // не пересекается
+      (imp.periodEnd < current.periodStart || imp.periodStart > current.periodEnd)
+    ) || null;
   }
 };
 
 // ==========================================
-// 3. Parser (v7.1)
+// 3. Parser
 // ==========================================
 const Parser = {
   parse(file) {
@@ -150,37 +220,30 @@ const Parser = {
       const path = parent ? `${parent.path} > ${name}` : name;
 
       const node = {
-        name,
-        level,
+        name, level,
         sum: toNum(row[SUM_COLUMN]),
         qty: toNum(row[QTY_COLUMN]),
         path,
         category: this.category(path),
         gender: this.gender(path),
         children: [],
-        isItem: false, // определим после обхода
+        isItem: false,
       };
 
       if (parent) parent.children.push(node);
       else roots.push(node);
-
       stack.push(node);
     }
 
-    // --- isItem = лист
     const markItems = (nodes) => nodes.forEach(n => {
-      if (n.children.length === 0) {
-        n.isItem = true;
-      } else {
-        markItems(n.children);
-      }
+      if (n.children.length === 0) n.isItem = true;
+      else markItems(n.children);
     });
     markItems(roots);
 
-    // --- Сходимость
-    let leavesSum = 0;
+    let leavesSum = 0, totalQty = 0;
     const collectLeaves = (nodes) => nodes.forEach(n => {
-      if (n.isItem) leavesSum += n.sum;
+      if (n.isItem) { leavesSum += n.sum; totalQty += n.qty; }
       else collectLeaves(n.children);
     });
     collectLeaves(roots);
@@ -191,10 +254,16 @@ const Parser = {
 
     return {
       roots,
-      daysInPeriod: period.daysInPeriod,
-      daysInMonth: period.daysInMonth,
+      periodStart: period.startISO,
+      periodEnd: period.endISO,
+      periodDays: period.daysInPeriod,
+      granularity: period.granularity,
+      periodLabel: period.label,
       periodKnown: period.known,
+      daysInMonth: period.daysInMonth,
       totalSum: controlSum,
+      totalQty,
+      avgCheck: totalQty > 0 ? controlSum / totalQty : 0,
       valid,
       errorMsg: valid ? null : { leaves: Math.round(leavesSum), control: Math.round(controlSum) },
       date: new Date().toISOString(),
@@ -207,19 +276,40 @@ const Parser = {
       /(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})\s*[-–—]\s*(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/
     );
     if (!m) {
-      return { daysInPeriod: CONFIG.PARSER.DEFAULT_PERIOD_DAYS, daysInMonth: 30, known: false };
+      const now = new Date();
+      return {
+        startISO: null, endISO: null,
+        daysInPeriod: CONFIG.PARSER.DEFAULT_PERIOD_DAYS,
+        daysInMonth: 30,
+        granularity: 'unknown',
+        label: 'период не определён',
+        known: false,
+      };
     }
     const y = (s) => (s.length === 2 ? 2000 + Number(s) : Number(s));
     const start = new Date(y(m[3]), Number(m[2]) - 1, Number(m[1]));
     const end   = new Date(y(m[6]), Number(m[5]) - 1, Number(m[4]));
-    const daysInPeriod = Math.round((end - start) / 86400000) + 1;
-    const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-    return { daysInPeriod, daysInMonth, known: true };
+    const days = Math.round((end - start) / 86400000) + 1;
+
+    let granularity;
+    if (days === 1) granularity = 'day';
+    else if (days <= 7) granularity = 'week';
+    else if (days >= 28 && days <= 31) granularity = 'month';
+    else if (days > 31) granularity = 'multi_month';
+    else granularity = 'unknown';
+
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const label = `${m[1].padStart(2,'0')}.${m[2].padStart(2,'0')}–${m[4].padStart(2,'0')}.${m[5].padStart(2,'0')}`;
+
+    return {
+      startISO: iso(start), endISO: iso(end),
+      daysInPeriod: days,
+      daysInMonth: new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate(),
+      granularity, label, known: true,
+    };
   },
 
-  normalize(s) {
-    return String(s || '').toLowerCase().replace(/ё/g, 'е');
-  },
+  normalize(s) { return String(s || '').toLowerCase().replace(/ё/g, 'е'); },
 
   category(path) {
     const p = this.normalize(path);
@@ -239,7 +329,96 @@ const Parser = {
 };
 
 // ==========================================
-// 4. APP Router & Screens
+// 4. Rails — парсер CSV карты рейлов
+// ==========================================
+const Rails = {
+  parseCSV(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    const out = [];
+    for (const line of lines) {
+      const parts = line.split(CONFIG.RAILS.CSV_DELIMITER).map(s => s.trim());
+      if (parts.length < 3) continue;
+      const [name, folderPath, metersRaw] = parts;
+      const meters = parseFloat(String(metersRaw).replace(',', '.'));
+      if (!name || !folderPath || !Number.isFinite(meters) || meters <= 0) continue;
+      out.push({ name, folderPath, meters });
+    }
+    return out;
+  },
+
+  efficiency(importData) {
+    if (!importData || !DB.data.rails.length) return [];
+    const folders = [];
+    const collect = (nodes) => nodes.forEach(n => {
+      if (n.isItem) return;
+      const leaf = n.children.length === 0 || n.children.every(c => c.isItem);
+      if (leaf) folders.push(n);
+      else collect(n.children);
+    });
+    collect(importData.roots);
+
+    const byPath = new Map(folders.map(f => [f.path, f]));
+    return DB.data.rails.map(r => {
+      const folder = byPath.get(r.folderPath);
+      const revenue = folder ? folder.sum : 0;
+      const eff = revenue / r.meters;
+      return {
+        ...r,
+        revenue,
+        efficiency: eff,
+        low: eff < CONFIG.RAILS.MIN_EFFICIENCY,
+        found: !!folder,
+      };
+    }).sort((a, b) => b.efficiency - a.efficiency);
+  }
+};
+
+// ==========================================
+// 5. ALERTS — локальные проверки
+// ==========================================
+const Alerts = {
+  check(current) {
+    if (!current) return [];
+    const out = [];
+
+    // 1. План
+    const planKey = current.periodStart ? current.periodStart.slice(0, 7) : current.date.slice(0, 7);
+    const plan = DB.data.plans[planKey];
+    if (plan > 0 && current.periodDays >= CONFIG.ALERTS.PLAN_WARN_MIN_DAYS) {
+      const pct = (current.totalSum / plan) * 100;
+      if (pct < CONFIG.ALERTS.PLAN_WARN_PCT) {
+        out.push({ type: 'warn', text: `План выполнен на ${Math.round(pct)}% — нужно ускориться` });
+      }
+    }
+
+    // 2. Сходимость
+    if (!current.valid) {
+      out.push({ type: 'error', text: 'Данные 1С подозрительны: расхождение в суммах' });
+    }
+
+    // 3. Папки ушли в C (по сравнению с прошлым сопоставимым)
+    const prev = DB.findComparable(current);
+    if (prev) {
+      const curr = Screens._collectFolders(current.roots);
+      const prevMap = new Map(Screens._collectFolders(prev.roots).map(f => [f.path, f.sum]));
+      let dropped = 0;
+      for (const f of curr) {
+        if (prevMap.has(f.path) && prevMap.get(f.path) > 0) {
+          const delta = (f.sum - prevMap.get(f.path)) / prevMap.get(f.path);
+          if (delta < -0.5) dropped++;
+        }
+      }
+      if (dropped > 0) {
+        out.push({ type: 'warn', text: `${dropped} папок упали более чем на 50% к прошлому периоду` });
+      }
+    }
+
+    return out;
+  }
+};
+
+// ==========================================
+// 6. APP Router & Screens
 // ==========================================
 const App = {
   screen: 'home',
@@ -252,7 +431,13 @@ const App = {
 
   init() {
     this.renderNav();
-    this.route(this.screen);
+    // Онбординг
+    if (!DB.data.profile) {
+      this.route('onboarding');
+    } else {
+      this.route(this.screen);
+      this.checkFollowup();
+    }
   },
 
   renderNav() {
@@ -268,18 +453,220 @@ const App = {
     this.renderNav();
     const root = document.getElementById('screen');
     root.innerHTML = '';
+    if (screen === 'onboarding') Screens.onboarding(root);
     if (screen === 'home') Screens.home(root);
     if (screen === 'analytics') Screens.analytics(root);
     if (screen === 'rails') Screens.rails(root);
     if (screen === 'settings') Screens.settings(root);
     window.scrollTo(0, 0);
+  },
+
+  checkFollowup() {
+    const p = DB.data.profile;
+    if (!p || !p.completedAt) return;
+    if (p.followupDone) return;
+    const days = (Date.now() - new Date(p.completedAt).getTime()) / 86400000;
+    if (days >= CONFIG.ONBOARDING.FOLLOWUP_DAYS) {
+      // покажем один раз при следующем открытии
+      setTimeout(() => Screens.followupModal(), 500);
+    }
   }
 };
 
 const Screens = {
+  // ---------- ONBOARDING ----------
+  onboarding(root) {
+    let step = 0;
+    const answers = {
+      role: null, stores: null, pains: [],
+      metricPriority: [], heroMetric: null,
+      plansFilled: null, fileKnown: null, uploadFrequency: null,
+      wantsRecommendations: null, reportFormat: null,
+    };
+
+    const render = () => {
+      const steps = [
+        // Шаг 1
+        `
+          <div class="header"><h1 class="h1">Знакомство</h1></div>
+          <div class="card">
+            <div class="card-title">Кто вы?</div>
+            <div class="radio-group">
+              ${[['owner','Собственник'],['director','Директор'],['manager','Управляющий'],['category','Категорийный менеджер']].map(([v,l]) =>
+                `<label class="radio-item ${answers.role===v?'active':''}" onclick="window.__ob('role','${v}',this)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Сколько магазинов?</div>
+            <div class="radio-group">
+              ${[['1','1'],['2-5','2–5'],['6+','6 и больше']].map(([v,l]) =>
+                `<label class="radio-item ${answers.stores===v?'active':''}" onclick="window.__ob('stores','${v}',this)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="window.__obNext()">Далее</button>
+        `,
+        // Шаг 2
+        `
+          <div class="header"><h1 class="h1">Что болит</h1></div>
+          <div class="card">
+            <div class="card-title">Что чаще всего вызывает вопросы? (можно несколько)</div>
+            <div class="radio-group">
+              ${[['falling','Падение выручки'],['unclear_folders','Непонятные папки'],['returns','Возвраты'],['rails_overload','Перегруз рейлов'],['plan','План'],['assortment','Ассортимент']].map(([v,l]) =>
+                `<label class="radio-item ${answers.pains.includes(v)?'active':''}" onclick="window.__obMulti('pains','${v}',this)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Как часто смотрите аналитику?</div>
+            <div class="radio-group">
+              ${[['daily','Ежедневно'],['weekly','Раз в неделю'],['monthly','Раз в месяц']].map(([v,l]) =>
+                `<label class="radio-item ${answers.uploadFrequency===v?'active':''}" onclick="window.__ob('uploadFrequency','${v}',this)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="window.__obNext()">Далее</button>
+        `,
+        // Шаг 3
+        `
+          <div class="header"><h1 class="h1">Приоритеты</h1></div>
+          <div class="card">
+            <div class="card-title">Какая цифра на главной для вас главная?</div>
+            <div class="radio-group">
+              ${[['revenue','Выручка'],['plan_pct','% плана'],['forecast','Прогноз'],['top5','Топ-5 папок']].map(([v,l]) =>
+                `<label class="radio-item ${answers.heroMetric===v?'active':''}" onclick="window.__ob('heroMetric','${v}',this)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Ранжируйте метрики (выберите 3)</div>
+            <div class="radio-group">
+              ${[['revenue','Выручка'],['avg_check','Ср. чек'],['rail_eff','₽/м рейла'],['sell_through','Sell-through'],['returns','Возвраты']].map(([v,l]) =>
+                `<label class="radio-item ${answers.metricPriority.includes(v)?'active':''}" onclick="window.__obMulti('metricPriority','${v}',this,3)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="window.__obNext()">Далее</button>
+        `,
+        // Шаг 4
+        `
+          <div class="header"><h1 class="h1">Гигиена данных</h1></div>
+          <div class="card">
+            <div class="card-title">Заполняете ли план на месяц?</div>
+            <div class="radio-group">
+              ${[['yes','Да'],['sometimes','Иногда'],['no','Нет']].map(([v,l]) =>
+                `<label class="radio-item ${answers.plansFilled===v?'active':''}" onclick="window.__ob('plansFilled','${v}',this)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Знаете, какой файл выгружать из 1С?</div>
+            <div class="radio-group">
+              ${[['yes','Да'],['help','Подскажите']].map(([v,l]) =>
+                `<label class="radio-item ${answers.fileKnown===v?'active':''}" onclick="window.__ob('fileKnown','${v}',this)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Готовы получать рекомендации?</div>
+            <div class="radio-group">
+              ${[['yes','Да'],['with_reason','Только с обоснованием'],['no','Нет']].map(([v,l]) =>
+                `<label class="radio-item ${answers.wantsRecommendations===v?'active':''}" onclick="window.__ob('wantsRecommendations','${v}',this)">${l}</label>`
+              ).join('')}
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="window.__obFinish()">Готово</button>
+        `,
+      ];
+
+      root.innerHTML = steps[step] + `
+        <div class="onboarding-progress">
+          ${[0,1,2,3].map(i => `<div class="dot ${i===step?'active':''}"></div>`).join('')}
+        </div>
+      `;
+    };
+
+    window.__ob = (key, val, el) => {
+      answers[key] = val;
+      el.parentNode.querySelectorAll('.radio-item').forEach(e => e.classList.remove('active'));
+      el.classList.add('active');
+    };
+    window.__obMulti = (key, val, el, limit) => {
+      const arr = answers[key];
+      const i = arr.indexOf(val);
+      if (i >= 0) { arr.splice(i, 1); el.classList.remove('active'); }
+      else {
+        if (limit && arr.length >= limit) return;
+        arr.push(val); el.classList.add('active');
+      }
+    };
+    window.__obNext = () => { step++; render(); };
+    window.__obFinish = async () => {
+      DB.data.profile = {
+        ...answers,
+        completedAt: new Date().toISOString(),
+        followupDone: false,
+      };
+      // чек-лист
+      DB.data.checklist = {
+        plan: false,
+        import: false,
+        top5: false,
+        alert: answers.wantsRecommendations !== 'no',
+      };
+      await DB.save();
+      UI.toast('Профиль сохранён');
+      App.route('home');
+    };
+
+    render();
+  },
+
+  // ---------- FOLLOWUP ----------
+  followupModal() {
+    if (DB.data.profile?.followupDone) return;
+    UI.modal(`
+      <h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Как вам Analytics Flow?</h2>
+      <p style="color:var(--text-muted);font-size:14px;margin-bottom:16px;">3 коротких вопроса — помогут сделать лучше.</p>
+      <div class="card-title">Стало понятнее, куда смотреть?</div>
+      <div class="radio-group" id="fu1">
+        ${[1,2,3,4,5].map(n => `<label class="radio-item" onclick="document.querySelectorAll('#fu1 .radio-item').forEach(e=>e.classList.remove('active'));this.classList.add('active');window.__fu1=${n}">${n}</label>`).join('')}
+      </div>
+      <div class="card-title" style="margin-top:12px">Что мешает пользоваться?</div>
+      <input class="input" id="fu2" placeholder="Свободный текст">
+      <div class="card-title" style="margin-top:12px">Что добавить в первую очередь?</div>
+      <div class="radio-group" id="fu3">
+        ${[['compare','Сравнение периодов'],['rails','Рейлы'],['alerts','Алерты'],['export','Экспорт']].map(([v,l]) =>
+          `<label class="radio-item" onclick="document.querySelectorAll('#fu3 .radio-item').forEach(e=>e.classList.remove('active'));this.classList.add('active');window.__fu3='${v}'">${l}</label>`
+        ).join('')}
+      </div>
+      <button class="btn btn-primary" style="margin-top:16px" onclick="window.__fuSave()">Отправить</button>
+      <button class="btn btn-secondary" style="margin-top:8px" onclick="window.__fuSkip()">Позже</button>
+    `);
+    window.__fuSave = async () => {
+      DB.data.profile.followupDone = true;
+      DB.data.profile.followup = {
+        score: window.__fu1 || null,
+        blocker: document.getElementById('fu2').value,
+        feature: window.__fu3 || null,
+        at: new Date().toISOString(),
+      };
+      await DB.save();
+      UI.closeModal();
+      UI.toast('Спасибо!');
+    };
+    window.__fuSkip = async () => {
+      DB.data.profile.followupDone = true;
+      await DB.save();
+      UI.closeModal();
+    };
+  },
+
+  // ---------- HOME ----------
   home(root) {
-    const current = DB.data.imports[0];
-    if (!current) {
+    const view = DB.getCurrentView();
+    if (!view) {
       root.innerHTML = `
         <div class="header"><h1 class="h1">Главная</h1></div>
         <div class="card empty-state">
@@ -290,17 +677,43 @@ const Screens = {
       return;
     }
 
-    const planKey = current.date.slice(0, 7);
-    const plan = DB.data.plans[planKey] || current.totalSum;
-    const planPct = plan > 0 ? Math.min(100, (current.totalSum / plan) * 100) : 0;
-    
-    // Блок 5: прогноз через конфиг и periodKnown
-    const showForecast = current.periodKnown && current.daysInPeriod >= CONFIG.PLAN.MIN_DAYS_FOR_FORECAST;
-    const forecast = showForecast
-      ? Math.round((current.totalSum / current.daysInPeriod) * current.daysInMonth)
-      : null;
+    const current = view.hero;
+    const comparable = DB.findComparable(current);
 
-    // 1. КАТЕГОРИИ (только листья)
+    const planKey = current.periodStart ? current.periodStart.slice(0, 7) : current.date.slice(0, 7);
+    const plan = DB.data.plans[planKey] || current.totalSum;
+    const planPctRaw = plan > 0 ? (current.totalSum / plan) * 100 : 0;
+    const planPct = Math.min(100, planPctRaw);
+    const overPlan = planPctRaw > 100;
+
+    // прогноз с диапазоном
+    const showForecast = current.periodKnown && current.periodDays >= CONFIG.PLAN.MIN_DAYS_FOR_FORECAST;
+    let forecastLine = '';
+    if (showForecast) {
+      const base = Math.round((current.totalSum / current.periodDays) * current.daysInMonth);
+      const spread = Math.round(base * CONFIG.PLAN.FORECAST_SPREAD);
+      forecastLine = `Прогноз: <b>${(base - spread).toLocaleString('ru-RU')}–${(base + spread).toLocaleString('ru-RU')} ₽</b> <span style="color:var(--text-muted);font-weight:500">(линейно, ±15%)</span>`;
+    } else {
+      forecastLine = current.periodKnown
+        ? `Прогноз недоступен (мало данных: ${current.periodDays} дн.)`
+        : `Прогноз недоступен (период не определён по имени файла)`;
+    }
+
+    // delta
+    let deltaLine = '';
+    if (comparable) {
+      const d = ((current.totalSum - comparable.totalSum) / comparable.totalSum) * 100;
+      const sign = d >= 0 ? '▲' : '▼';
+      const cls = d >= 0 ? 'pos' : 'neg';
+      deltaLine = `<span class="delta ${cls}">${sign} ${Math.abs(d).toFixed(1)}%</span> к периоду ${comparable.periodLabel}`;
+    } else {
+      deltaLine = `<span style="color:var(--text-muted)">Нет сопоставимого периода для сравнения</span>`;
+    }
+
+    // sparkline
+    const sparkline = this._renderSparkline(view.all);
+
+    // категории
     const cats = { 'Одежда': 0, 'Обувь': 0, 'Аксессуары': 0, 'Распродажа': 0 };
     const calcCats = (nodes) => nodes.forEach(n => {
       if (n.isItem) cats[n.category] += n.sum;
@@ -308,9 +721,8 @@ const Screens = {
     });
     calcCats(current.roots);
 
-    // 2. ТОП-5 — все листовые папки, приоритет по категории и полу
+    // топ-5
     const tops = Object.fromEntries(CONFIG.TOP.CATEGORIES.map(k => [k, []]));
-
     const findLeafFolders = (nodes) => nodes.forEach(n => {
       if (n.isItem) return;
       const isLeaf = n.children.length === 0 || n.children.every(c => c.isItem);
@@ -319,7 +731,6 @@ const Screens = {
     });
     findLeafFolders.call(this, current.roots);
 
-    // Очистка от дублей по path и сортировка
     for (const key of CONFIG.TOP.CATEGORIES) {
       const seen = new Set();
       tops[key] = tops[key]
@@ -327,11 +738,23 @@ const Screens = {
         .sort((a, b) => b.sum - a.sum);
     }
 
+    // чек-лист
+    const cl = DB.data.checklist;
+    const checklistVisible = !cl.plan || !cl.import || !cl.top5;
+    const checklistHTML = checklistVisible ? `
+      <div class="card">
+        <div class="card-title">Первые шаги</div>
+        ${this._checklistItem(cl.plan, 'Заполнить план на месяц', "App.route('settings')")}
+        ${this._checklistItem(cl.import, 'Загрузить файл 1С', "App.route('settings')")}
+        ${this._checklistItem(cl.top5, 'Посмотреть топ-5 папок', "document.getElementById('top-list').scrollIntoView({behavior:'smooth'})")}
+      </div>
+    ` : '';
+
     root.innerHTML = `
       <div class="header">
         <div>
-          <h1 class="h1">Мода ▾</h1>
-          <div class="subtitle">Данные за ${current.daysInPeriod} дн.</div>
+          <h1 class="h1">Analytics</h1>
+          <div class="subtitle">${current.periodLabel} · ${current.periodDays} дн.</div>
         </div>
         <div class="tag ${current.valid ? 'ok' : 'err'}" id="err-tag">
           ${current.valid ? 'Всё ок' : 'Ошибка'}
@@ -343,16 +766,20 @@ const Screens = {
         <div class="hero-val num">${Math.round(current.totalSum).toLocaleString('ru-RU')} ₽</div>
         <div class="hero-meta">
           <span>План: ${Math.round(plan).toLocaleString('ru-RU')} ₽</span>
-          <span>${Math.round(planPct)}%</span>
+          <span>${Math.round(planPctRaw)}% ${overPlan ? '<span class="badge-over">+ перевыполнение</span>' : ''}</span>
         </div>
         <div class="progress-wrap"><div class="progress-bar" style="width:${planPct}%"></div></div>
-        ${forecast !== null
-          ? `<div class="forecast-text">Прогноз на месяц: <span style="color:var(--accent);font-weight:700">${forecast.toLocaleString('ru-RU')} ₽</span></div>`
-          : `<div class="forecast-text">${current.periodKnown
-              ? `Прогноз недоступен (мало данных: ${current.daysInPeriod} дн.)`
-              : `Прогноз недоступен (период не определён по имени файла)`}</div>`
-        }
+        <div class="hero-meta" style="margin-top:10px">
+          <span>Ср. чек: <b>${Math.round(current.avgCheck).toLocaleString('ru-RU')} ₽</b></span>
+          <span>${deltaLine}</span>
+        </div>
+        ${sparkline}
+        <div class="forecast-text">${forecastLine}</div>
       </div>
+
+      ${this._renderAlerts(current)}
+
+      ${checklistHTML}
 
       <div class="card">
         <div class="card-title">Категории</div>
@@ -369,8 +796,8 @@ const Screens = {
       <div class="card" style="padding-bottom:12px">
         <div class="card-title">Топ-5 папок</div>
         <div class="tabs-scroll">
-          <div class="tab active" data-g="М" onclick="window.switchTop('М', this)">Мужская одежда</div>
-          <div class="tab" data-g="Ж" onclick="window.switchTop('Ж', this)">Женская одежда</div>
+          <div class="tab active" data-g="М" onclick="window.switchTop('М', this)">Мужская</div>
+          <div class="tab" data-g="Ж" onclick="window.switchTop('Ж', this)">Женская</div>
           <div class="tab" data-g="Д" onclick="window.switchTop('Д', this)">Детская</div>
           <div class="tab" data-g="Обувь" onclick="window.switchTop('Обувь', this)">Обувь</div>
           <div class="tab" data-g="Аксессуары" onclick="window.switchTop('Аксессуары', this)">Аксессуары</div>
@@ -385,7 +812,6 @@ const Screens = {
         list = list.filter(i => !CONFIG.TOP.EXCLUDE_FROM_GENDER_TABS.includes(i.category));
       }
       if (!list.length) return `<div class="item-desc" style="padding:16px 0">Нет данных</div>`;
-
       return list.slice(0, CONFIG.TOP.LIMIT).map((item, i) => `
         <div class="list-item">
           <div>
@@ -401,6 +827,11 @@ const Screens = {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
       document.getElementById('top-list').innerHTML = window.renderTop(g);
+      // отметка чек-листа
+      if (!DB.data.checklist.top5) {
+        DB.data.checklist.top5 = true;
+        DB.save();
+      }
     };
 
     document.getElementById('top-list').innerHTML = window.renderTop('М');
@@ -419,45 +850,100 @@ const Screens = {
     }
   },
 
-  // Раскладывает листовую папку по вкладкам топа.
+  _checklistItem(done, label, action) {
+    return `
+      <div class="checklist-item ${done ? 'done' : ''}" ${done ? '' : `onclick="${action}"`}>
+        <div class="checkbox">${done ? '✓' : ''}</div>
+        <div class="checklist-label">${label}</div>
+      </div>
+    `;
+  },
+
+  _renderAlerts(current) {
+    const alerts = Alerts.check(current);
+    if (!alerts.length) { UI.setBadge(0); return ''; }
+    UI.setBadge(alerts.filter(a => a.type === 'error').length || alerts.length);
+    return `
+      <div class="card alerts-card">
+        <div class="card-title">Внимание</div>
+        ${alerts.map(a => `
+          <div class="alert-item ${a.type}">
+            <span class="alert-dot"></span>
+            <span>${a.text}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  },
+
+  _renderSparkline(imports) {
+    const monthly = imports
+      .filter(i => i.granularity === 'month' && i.totalSum > 0)
+      .sort((a, b) => (a.periodStart || '').localeCompare(b.periodStart || ''))
+      .slice(-8);
+    if (monthly.length < 2) return '';
+    const w = 300, h = 50, pad = 4;
+    const max = Math.max(...monthly.map(m => m.totalSum));
+    const min = Math.min(...monthly.map(m => m.totalSum));
+    const range = max - min || 1;
+    const pts = monthly.map((m, i) => {
+      const x = pad + (i / (monthly.length - 1)) * (w - pad * 2);
+      const y = h - pad - ((m.totalSum - min) / range) * (h - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `
+      <div class="sparkline-wrap">
+        <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+          <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="sparkline-labels">
+          <span>${monthly[0].periodLabel}</span>
+          <span>${monthly[monthly.length-1].periodLabel}</span>
+        </div>
+      </div>
+    `;
+  },
+
+  _collectFolders(nodes) {
+    const out = [];
+    const walk = (arr) => arr.forEach(n => {
+      if (n.isItem) return;
+      const leaf = n.children.length === 0 || n.children.every(c => c.isItem);
+      if (leaf) out.push(n);
+      else walk(n.children);
+    });
+    walk(nodes);
+    return out;
+  },
+
   _classifyTopFolder(folder, tops) {
     const cat = folder.category;
-
     if (cat === 'Аксессуары') {
       if (folder.name.toLowerCase() !== 'аксессуары') tops['Аксессуары'].push(folder);
       return;
     }
-
     if (cat === 'Обувь') {
       tops['Обувь'].push(folder);
       if (folder.gender) tops[folder.gender].push(folder);
       return;
     }
-
     if (cat === 'Одежда') {
       if (folder.gender) tops[folder.gender].push(folder);
       return;
     }
   },
 
+  // ---------- ANALYTICS ----------
   analytics(root) {
-    const current = DB.data.imports[0];
-    if (!current) return App.route('home');
+    const view = DB.getCurrentView();
+    if (!view) return App.route('home');
+    const current = view.hero;
 
-    let folders = [];
-    const collect = (nodes) => nodes.forEach(n => {
-      if (n.isItem) return;
-      if (n.children.length === 0 || n.children.every(c => c.isItem)) folders.push(n);
-      else collect(n.children);
-    });
-    collect(current.roots);
-
+    const folders = this._collectFolders(current.roots);
     const positive = folders.filter(f => f.sum > 0).sort((a, b) => b.sum - a.sum);
     const zeroOrNeg = folders.filter(f => f.sum <= 0);
-
     const total = positive.reduce((acc, f) => acc + f.sum, 0);
-    
-    // Блок 4: ABC через конфиг
+
     const { A_THRESHOLD, B_THRESHOLD } = CONFIG.ABC;
     let cum = 0;
     const a = [], b = [], c = [];
@@ -470,21 +956,20 @@ const Screens = {
 
     root.innerHTML = `
       <div class="header"><h1 class="h1">Аналитика</h1></div>
-
       <div class="card">
         <div class="card-title">ABC-Анализ папок</div>
         <div class="stats-grid" style="margin-bottom:12px;">
           <div class="stat-box" style="background:var(--accent)">
             <div class="stat-label" style="color:var(--text)">A (80%)</div>
-            <div class="stat-val num">${a.length} папок</div>
+            <div class="stat-val num">${a.length}</div>
           </div>
-          <div class="stat-box" style="background:var(--danger);color:#fff">
+          <div class="stat-box" style="background:#F2B84B;color:#fff">
             <div class="stat-label" style="color:#fff">B (15%)</div>
-            <div class="stat-val num">${b.length} папок</div>
+            <div class="stat-val num">${b.length}</div>
           </div>
           <div class="stat-box" style="background:var(--danger-bg);color:var(--danger)">
             <div class="stat-label" style="color:var(--danger)">C (5%)</div>
-            <div class="stat-val num">${c.length} папок</div>
+            <div class="stat-val num">${c.length}</div>
           </div>
           <div class="stat-box" style="background:var(--warn-bg);color:var(--warn)">
             <div class="stat-label" style="color:var(--warn)">Z (возвраты)</div>
@@ -535,19 +1020,84 @@ const Screens = {
     `;
   },
 
+  // ---------- RAILS ----------
   rails(root) {
+    const view = DB.getCurrentView();
+    const current = view?.hero;
+    const rails = current ? Rails.efficiency(current) : [];
+
     root.innerHTML = `
       <div class="header"><h1 class="h1">Рейлы</h1></div>
-      <div class="card empty-state">
-        <h2>В разработке</h2>
-        <p>Чтобы считать эффективность рейлов (₽/м), нужно загрузить карту рейлов и привязать к ним товары.</p>
+
+      <div class="card">
+        <div class="card-title">Карта рейлов</div>
+        <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px;font-weight:500;">
+          CSV: <code>рейл${CONFIG.RAILS.CSV_DELIMITER}папка${CONFIG.RAILS.CSV_DELIMITER}метраж</code>
+        </p>
+        <input type="file" id="rails-upload" accept=".csv,text/csv" style="display:none">
+        <button class="btn btn-primary" id="btn-rails-upload">Загрузить CSV</button>
+        ${DB.data.rails.length ? `<button class="btn btn-secondary" style="margin-top:8px" id="btn-rails-clear">Очистить карту</button>` : ''}
       </div>
+
+      ${rails.length ? `
+      <div class="card">
+        <div class="card-title">Эффективность (${rails.length} рейлов)</div>
+        <div class="item-desc" style="margin-bottom:12px">Порог «недогружен»: ${CONFIG.RAILS.MIN_EFFICIENCY.toLocaleString('ru-RU')} ₽/м</div>
+        ${rails.map(r => `
+          <div class="list-item ${r.low ? 'rail-low' : ''}">
+            <div>
+              <div class="item-name">${r.name} ${r.low ? '<span class="badge-low">недогружен</span>' : ''}</div>
+              <div class="item-desc">${r.meters} м · ${r.found ? r.folderPath : 'папка не найдена в отчёте'}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="item-val num ${r.efficiency < 0 ? 'neg' : ''}">${Math.round(r.efficiency).toLocaleString('ru-RU')} ₽/м</div>
+              <div class="item-desc">${Math.round(r.revenue).toLocaleString('ru-RU')} ₽</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ` : `<div class="card empty-state"><h2>Нет карты рейлов</h2><p>Загрузите CSV, чтобы увидеть ₽/м по каждому рейлу</p></div>`}
     `;
+
+    const fi = document.getElementById('rails-upload');
+    document.getElementById('btn-rails-upload').onclick = () => fi.click();
+    fi.onchange = async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const text = await f.text();
+      const parsed = Rails.parseCSV(text);
+      if (!parsed.length) { UI.toast('Не удалось разобрать CSV', 'error'); return; }
+      DB.data.rails = parsed;
+      await DB.save();
+      UI.toast(`Загружено рейлов: ${parsed.length}`);
+      App.route('rails');
+    };
+
+    const clr = document.getElementById('btn-rails-clear');
+    if (clr) clr.onclick = async () => {
+      DB.data.rails = [];
+      await DB.save();
+      UI.toast('Карта рейлов очищена');
+      App.route('rails');
+    };
   },
 
+  // ---------- SETTINGS ----------
   settings(root) {
-    const planKey = new Date().toISOString().slice(0, 7);
+    const view = DB.getCurrentView();
+    const current = view?.hero;
+    const planKey = current?.periodStart ? current.periodStart.slice(0, 7) : new Date().toISOString().slice(0, 7);
     const currentPlan = DB.data.plans[planKey] || '';
+
+    const importsList = DB.data.imports.map(i => `
+      <div class="list-item">
+        <div>
+          <div class="item-name">${i.periodLabel || i.filename}</div>
+          <div class="item-desc">${i.granularity} · ${i.periodDays} дн. · ${Math.round(i.totalSum).toLocaleString('ru-RU')} ₽</div>
+        </div>
+        <div class="item-desc">${i.valid ? '✓' : '⚠'}</div>
+      </div>
+    `).join('');
 
     root.innerHTML = `
       <div class="header"><h1 class="h1">Настройки</h1></div>
@@ -555,7 +1105,7 @@ const Screens = {
       <div class="card">
         <div class="card-title">План на месяц</div>
         <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px;font-weight:500;">
-          Введите плановую выручку на текущий месяц.
+          Плановая выручка на текущий месяц (${planKey}).
         </p>
         <input type="number" class="input" id="plan-input" placeholder="Например, 1000000" value="${currentPlan}">
         <button class="btn btn-primary" style="margin-top:12px" id="btn-save-plan">Сохранить план</button>
@@ -564,19 +1114,36 @@ const Screens = {
       <div class="card">
         <div class="card-title">Данные 1С</div>
         <p style="font-size:14px;color:var(--text-muted);margin-bottom:20px;font-weight:500;">
-          Загрузите .xlsx файл.
+          Загрузите .xlsx файл. Имя файла должно содержать период (например, 01.12.2026-31.12.2026.xlsx).
         </p>
         <input type="file" id="file-upload" accept=".xlsx" style="display:none">
         <button class="btn btn-primary" id="btn-upload">Загрузить .xlsx</button>
         ${DB.data.imports.length ? `<button class="btn btn-danger" style="margin-top:12px" id="btn-clear">Очистить все данные</button>` : ''}
+      </div>
+
+      ${DB.data.imports.length ? `
+      <div class="card">
+        <div class="card-title">Загруженные отчёты (${DB.data.imports.length})</div>
+        ${importsList}
+      </div>
+      ` : ''}
+
+      <div class="card">
+        <div class="card-title">Профиль</div>
+        <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px;">
+          ${DB.data.profile ? `Роль: ${DB.data.profile.role || '—'} · Магазинов: ${DB.data.profile.stores || '—'}` : 'Не заполнен'}
+        </p>
+        <button class="btn btn-secondary" id="btn-retake">Пройти анкету заново</button>
       </div>
     `;
 
     document.getElementById('btn-save-plan').onclick = async () => {
       const val = parseFloat(document.getElementById('plan-input').value) || 0;
       DB.data.plans[planKey] = val;
+      if (val > 0) DB.data.checklist.plan = true;
       await DB.save();
       UI.toast('План сохранён');
+      App.route('home');
     };
 
     if (DB.data.imports.length) {
@@ -591,7 +1158,9 @@ const Screens = {
     }
 
     window.confirmClear = async () => {
-      DB.data = { imports: [], rails: [], links: [], plans: {} };
+      DB.data.imports = [];
+      DB.data.checklist.import = false;
+      DB.data.checklist.top5 = false;
       await DB.save();
       UI.closeModal();
       UI.toast('Данные удалены');
@@ -608,20 +1177,28 @@ const Screens = {
       try {
         const data = await Parser.parse(file);
         DB.data.imports.unshift(data);
-        // Блок 6: лимит импортов
         DB.data.imports = DB.data.imports.slice(0, CONFIG.STORAGE.MAX_IMPORTS);
+        DB.data.checklist.import = true;
         await DB.save();
-        UI.toast(data.valid ? 'Успешно загружено' : 'Внимание: расхождение в суммах', data.valid ? 'default' : 'error');
+        UI.toast(
+          data.valid ? `Загружено: ${data.periodLabel}` : 'Внимание: расхождение в суммах',
+          data.valid ? 'default' : 'error'
+        );
         App.route('home');
       } catch (err) {
         UI.toast('Ошибка чтения файла', 'error');
       }
     };
+
+    document.getElementById('btn-retake').onclick = () => {
+      DB.data.profile = null;
+      App.route('onboarding');
+    };
   }
 };
 
 // ==========================================
-// 5. INIT
+// 7. INIT
 // ==========================================
 window.App = App;
 window.UI = UI;
